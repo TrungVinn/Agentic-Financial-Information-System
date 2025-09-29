@@ -1,5 +1,4 @@
 import re
-import sqlite3
 from typing import Dict, Any, Optional, Tuple, List
 import pandas as pd
 from config import DB_PATH, SQL_SAMPLES_FILE, DJIA_COMPANIES_CSV
