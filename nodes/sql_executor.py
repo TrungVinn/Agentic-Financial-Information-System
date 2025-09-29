@@ -1,8 +1,8 @@
 from typing import Dict, Any, Optional
 import re
-import sqlite3
 import pandas as pd
-from config import DB_PATH
+from sqlalchemy import text
+from db.pg import get_engine
 from nodes.utils import normalize_text, extract_date_parts, extract_date_range, extract_quarter, extract_month_range, extract_ticker
 
 def build_params(question: str, ticker: Optional[str]) -> Dict[str, Any]:
@@ -43,12 +43,10 @@ def build_params(question: str, ticker: Optional[str]) -> Dict[str, Any]:
     return params
 
 def run_sql(sql: str, params: Dict[str, Any]) -> pd.DataFrame:
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        df = pd.read_sql_query(sql, conn, params=params)
+    engine = get_engine()
+    with engine.connect() as conn:
+        df = pd.read_sql_query(text(sql), conn, params=params)
         return df
-    finally:
-        conn.close()
 
 def execute_sql(state: Dict[str, Any]) -> Dict[str, Any]:
     question = state.get("question", "")

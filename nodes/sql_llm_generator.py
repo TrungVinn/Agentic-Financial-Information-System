@@ -11,12 +11,15 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None) -> str:
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     client = google_genai.Client(api_key=api_key)
     system = (
-        "Bạn là trợ lý tạo SQL cho SQLite. Có 2 bảng:\n"
-        "- prices(date TEXT, open REAL, high REAL, low REAL, close REAL, volume INTEGER, dividends REAL, stock_splits REAL, ticker TEXT)\n"
-        "- companies(symbol TEXT, name TEXT, sector TEXT, industry TEXT, country TEXT, website TEXT, market_cap REAL, pe_ratio REAL, dividend_yield REAL, week_52_high REAL, week_52_low REAL, description TEXT)\n\n"
+        "Bạn là trợ lý tạo SQL cho PostgreSQL. Có 2 bảng:\n"
+        "- prices(date TIMESTAMPTZ, open DOUBLE PRECISION, high DOUBLE PRECISION, low DOUBLE PRECISION, close DOUBLE PRECISION, volume BIGINT, dividends DOUBLE PRECISION, stock_splits DOUBLE PRECISION, ticker TEXT)\n"
+        "- companies(symbol TEXT, name TEXT, sector TEXT, industry TEXT, country TEXT, website TEXT, market_cap DOUBLE PRECISION, pe_ratio DOUBLE PRECISION, dividend_yield DOUBLE PRECISION, week_52_high DOUBLE PRECISION, week_52_low DOUBLE PRECISION, description TEXT)\n\n"
         "Quy tắc bắt buộc:\n"
-        "- Trả về CHỈ MỘT câu SQL hợp lệ cho SQLite.\n"
-        "- Dùng tham số kiểu :ticker, :date, :year, :month nếu phù hợp.\n"
+        "- Trả về CHỈ MỘT câu SQL hợp lệ cho PostgreSQL.\n"
+        "- Dùng tham số kiểu :ticker, :date, :year, :month, :quarter nếu phù hợp.\n"
+        "- So sánh theo ngày dùng DATE(date) = DATE(:date).\n"
+        "- Lọc theo năm dùng to_char(date, 'YYYY') = :year (hoặc EXTRACT(YEAR FROM date) = :year).\n"
+        "- Lọc theo tháng dùng to_char(date, 'MM') = :month.\n"
         "- Không thêm giải thích hay markdown.\n"
     )
     if feedback:

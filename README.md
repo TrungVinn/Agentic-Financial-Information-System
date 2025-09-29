@@ -1,4 +1,4 @@
-# DJIA Multi-Agent (LangChain + Gemini + SQLite + Streamlit)
+# DJIA Multi-Agent (LangChain + Gemini + PostgreSQL + Streamlit)
 
 Ứng dụng cho phép đặt câu hỏi (Việt/Anh) về dữ liệu DJIA (companies/prices), hiển thị câu lệnh SQL, bảng kết quả và câu trả lời ngắn. Giao diện chat như ChatGPT.
 
@@ -29,7 +29,21 @@ Dữ liệu CSV có sẵn:
 - data/djia_companies_20250426.csv
 - data/djia_prices_20250426.csv
 
-Sinh SQLite DB:
+Sử dụng PostgreSQL (khuyến nghị):
+
+1) Cấu hình biến môi trường `DATABASE_URL` (hoặc `PG*`):
+
+```bash
+export DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/djia
+```
+
+2) Khởi tạo và nạp dữ liệu vào PostgreSQL:
+
+```bash
+python db/init_db_pg.py
+```
+
+Vẫn có thể dùng SQLite (cũ) cho mục đích thử nhanh:
 
 ```bash
 python db/init_db.py

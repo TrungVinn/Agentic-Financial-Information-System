@@ -47,7 +47,7 @@ def match_sample(question: str) -> Optional[str]:
 
     # 0) Comparative (2 công ty) - ưu tiên các câu theo NĂM (không yêu cầu :date) để tránh nhầm sang mẫu theo ngày
     if (t1 and t2) and has_year and ("dividend" in q or "dividends" in q or "cổ tức" in q) and ("higher" in q or "cao hơn" in q or "which" in q or "ai" in q):
-        s = find_sample_with(["a_dividends_per_share", "b_dividends_per_share"]) or find_sample_with(["sum(dividends)", "strftime('%Y', date) = :year"]) 
+        s = find_sample_with(["a_dividends_per_share", "b_dividends_per_share"]) or find_sample_with(["sum(dividends)", "to_char(date, 'YYYY') = :year"]) 
         if s:
             return s
 
@@ -55,27 +55,27 @@ def match_sample(question: str) -> Optional[str]:
     if (t1 and t2) and ("higher" in q or "cao hơn" in q or "which" in q or "ai" in q):
         # Ưu tiên theo field được nhắc đến
         if ("closing price" in q or "giá đóng" in q):
-            s = find_sample_with(["a_close", "b_close", "date(:date)"])
+            s = find_sample_with(["a_close", "b_close", "DATE(:date)"])
             if s:
                 return s
         if ("opening price" in q or "giá mở" in q or "giá mở cửa" in q):
-            s = find_sample_with(["a_open", "b_open", "date(:date)"])
+            s = find_sample_with(["a_open", "b_open", "DATE(:date)"])
             if s:
                 return s
         if ("high" in q or "cao nhất" in q):
-            s = find_sample_with(["a_high", "b_high", "date(:date)"])
+            s = find_sample_with(["a_high", "b_high", "DATE(:date)"])
             if s:
                 return s
         if ("low" in q or "thấp nhất" in q):
-            s = find_sample_with(["a_low", "b_low", "date(:date)"])
+            s = find_sample_with(["a_low", "b_low", "DATE(:date)"])
             if s:
                 return s
         if ("volume" in q or "khối lượng" in q):
-            s = find_sample_with(["a_volume", "b_volume", "date(:date)"])
+            s = find_sample_with(["a_volume", "b_volume", "DATE(:date)"])
             if s:
                 return s
         if ("dividend" in q or "dividends" in q or "cổ tức" in q):
-            s = find_sample_with(["a_dividends", "b_dividends", "date(:date)"])
+            s = find_sample_with(["a_dividends", "b_dividends", "DATE(:date)"])
             if s:
                 return s
     # Comparative, easy: yearly dividends per share higher (company A vs B)
@@ -92,49 +92,49 @@ def match_sample(question: str) -> Optional[str]:
     if has_date and not has_date_range and not (t1 and t2) and ("which company" in q or "công ty nào" in q):
         # Close
         if ("closing price" in q or "đóng cửa" in q):
-            s = find_sample_with(["fields: company, close", "order by p.close desc"]) or find_sample_with(["fields: company, close", "order by p.close asc"])
+        s = find_sample_with(["fields: company, close", "order by p.close desc"]) or find_sample_with(["fields: company, close", "order by p.close asc"])
             if s:
                 return s
         # Open
         if ("opening price" in q or "giá mở" in q or "giá mở cửa" in q):
-            s = find_sample_with(["fields: company, open", "order by p.open desc"]) or find_sample_with(["fields: company, open", "order by p.open asc"])
+        s = find_sample_with(["fields: company, open", "order by p.open desc"]) or find_sample_with(["fields: company, open", "order by p.open asc"])
             if s:
                 return s
         # High
         if ("high" in q or "cao nhất" in q):
-            s = find_sample_with(["fields: company, high", "order by p.high desc"]) or find_sample_with(["fields: company, high", "order by p.high asc"])
+        s = find_sample_with(["fields: company, high", "order by p.high desc"]) or find_sample_with(["fields: company, high", "order by p.high asc"])
             if s:
                 return s
         # Low
         if ("low" in q or "thấp nhất" in q):
-            s = find_sample_with(["fields: company, low", "order by p.low desc"]) or find_sample_with(["fields: company, low", "order by p.low asc"])
+        s = find_sample_with(["fields: company, low", "order by p.low desc"]) or find_sample_with(["fields: company, low", "order by p.low asc"])
             if s:
                 return s
         # Volume
         if ("volume" in q or "khối lượng" in q):
-            s = find_sample_with(["fields: company, volume", "order by p.volume desc"]) or find_sample_with(["fields: company, volume", "order by p.volume asc"])
+        s = find_sample_with(["fields: company, volume", "order by p.volume desc"]) or find_sample_with(["fields: company, volume", "order by p.volume asc"])
             if s:
                 return s
         # Dividends
         if ("dividend" in q or "cổ tức" in q):
-            s = find_sample_with(["fields: company, dividends", "order by p.dividends desc"]) or find_sample_with(["fields: company, dividends", "order by p.dividends asc"])
+        s = find_sample_with(["fields: company, dividends", "order by p.dividends desc"]) or find_sample_with(["fields: company, dividends", "order by p.dividends asc"])
             if s:
                 return s
         # Stock splits
         if ("stock split" in q or "split ratio" in q or "chia tách" in q or "tách cổ phiếu" in q):
-            s = find_sample_with(["fields: company, stock_splits", "order by p.stock_splits desc"]) or find_sample_with(["fields: company, stock_splits", "order by p.stock_splits asc"])
+        s = find_sample_with(["fields: company, stock_splits", "order by p.stock_splits desc"]) or find_sample_with(["fields: company, stock_splits", "order by p.stock_splits asc"])
             if s:
                 return s
 
     # 1) Factual, medium theo năm ưu tiên tiếp nhưng chỉ khi có năm và KHÔNG có ngày đầy đủ
     # 1.a) Highest closing price in {year}
     if ("highest closing price" in q or ("cao nhất" in q and "đóng cửa" in q)) and has_year and not has_date:
-        s = find_sample_with(["order by close desc", "strftime('%y', date) = :year".replace("%y", "%Y")])
+        s = find_sample_with(["order by close desc", "to_char(date, 'YYYY') = :year"])
         if s:
             return s
     # 1.b) Lowest closing price in {year}
     if ("lowest closing price" in q or ("thấp nhất" in q and "đóng cửa" in q)) and has_year and not has_date:
-        s = find_sample_with(["order by close asc", "strftime('%y', date) = :year".replace("%y", "%Y")])
+        s = find_sample_with(["order by close asc", "to_char(date, 'YYYY') = :year"])
         if s:
             return s
     # 1.c) How many dividends in {year}
@@ -144,7 +144,7 @@ def match_sample(question: str) -> Optional[str]:
             return s
     # 1.d) Dividend per share on {date}
     if ("dividend per share" in q or ("cổ tức" in q and ("ngày" in q or "vào" in q))) and has_date:
-        s = find_sample_with(["select dividends as dividend_per_share", "date(:date)"])
+        s = find_sample_with(["select dividends as dividend_per_share", "DATE(:date)"])
         if s:
             return s
     # 1.e) Stock split date and ratio
@@ -155,23 +155,23 @@ def match_sample(question: str) -> Optional[str]:
 
     # 2) Factual, easy theo ngày
     if ("closing price" in q or "giá đóng cửa" in q) and has_date and not has_date_range and not (t1 and t2) and ("change" not in q and "from" not in q and "to" not in q):
-        s = find_sample_with(["select close", "date(:date)"])
+        s = find_sample_with(["select close", "DATE(:date)"])
         if s:
             return s
     if ("opening price" in q or "giá mở cửa" in q) and has_date and not has_date_range and not (t1 and t2):
-        s = find_sample_with(["select open", "date(:date)"])
+        s = find_sample_with(["select open", "DATE(:date)"])
         if s:
             return s
     if ("highest price" in q or "giá cao nhất" in q) and has_date and not has_date_range and not (t1 and t2):
-        s = find_sample_with(["select high", "date(:date)"])
+        s = find_sample_with(["select high", "DATE(:date)"])
         if s:
             return s
     if ("lowest price" in q or "giá thấp nhất" in q) and has_date and not has_date_range and not (t1 and t2):
-        s = find_sample_with(["select low", "date(:date)"])
+        s = find_sample_with(["select low", "DATE(:date)"])
         if s:
             return s
     if ("trading volume" in q or "khối lượng" in q) and has_date and not has_date_range and not (t1 and t2):
-        s = find_sample_with(["select volume", "date(:date)"])
+        s = find_sample_with(["select volume", "DATE(:date)"])
         if s:
             return s
 
@@ -179,17 +179,17 @@ def match_sample(question: str) -> Optional[str]:
     if has_year and ticker is not None:
         # Total trading volume in year
         if ("total trading volume" in q or ("tổng" in q and "khối lượng" in q)):
-            s = find_sample_with(["sum(volume) as total_volume", "strftime('%Y', date) = :year"])
+            s = find_sample_with(["sum(volume) as total_volume", "to_char(date, 'YYYY') = :year"])
             if s:
                 return s
         # Average closing price in month
         if ("average closing price" in q or "trung bình" in q) and has_date and ("month" in q or "tháng" in q):
-            s = find_sample_with(["avg_close", "strftime('%m', date) = :month"])
+            s = find_sample_with(["avg_close", "to_char(date, 'MM') = :month"])
             if s:
                 return s
         # Average closing price in quarter
         if ("average closing price" in q or "trung bình" in q) and ("q1" in q or "q2" in q or "q3" in q or "q4" in q or "quarter" in q or "quý" in q or "first quarter" in q):
-            s = find_sample_with(["avg_close", ":quarter"]) or find_sample_with(["avg_close", "case "]) or find_sample_with(["avg_close", "strftime('%Y', date) = :year"]) 
+            s = find_sample_with(["avg_close", ":quarter"]) or find_sample_with(["avg_close", "case "]) or find_sample_with(["avg_close", "to_char(date, 'YYYY') = :year"]) 
             if s:
                 return s
         # Average daily trading volume
@@ -199,7 +199,7 @@ def match_sample(question: str) -> Optional[str]:
                 return s
         # Average closing price from month X to month Y
         if ("average closing price" in q or "trung bình" in q) and ("from" in q or "through" in q or "đến" in q or "den" in q or "-" in q):
-            s = find_sample_with(["avg_close", "strftime('%m', date) between :start_month and :end_month"]) or find_sample_with(["avg_close", ":start_month"]) 
+            s = find_sample_with(["avg_close", "to_char(date, 'MM') between :start_month and :end_month"]) or find_sample_with(["avg_close", ":start_month"]) 
             if s:
                 return s
         # Percentage increase in year
@@ -209,7 +209,7 @@ def match_sample(question: str) -> Optional[str]:
                 return s
         # Second half average
         if ("second half" in q or "nửa cuối" in q) and ("average" in q or "trung bình" in q):
-            s = find_sample_with(["avg_close", "strftime('%m', date) in ('07', '08', '09', '10', '11', '12')"])
+            s = find_sample_with(["avg_close", "to_char(date, 'MM') in ('07', '08', '09', '10', '11', '12')"])
             if s:
                 return s
 
