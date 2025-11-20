@@ -1,4 +1,5 @@
 import re
+import sqlite3
 from typing import Dict, Any, Optional, Tuple, List
 import pandas as pd
 from config import DB_PATH, SQL_SAMPLES_FILE, DJIA_COMPANIES_CSV
@@ -34,6 +35,7 @@ def load_company_aliases() -> Dict[str, str]:
         "microsoft": "MSFT",
         "boeing": "BA",
         "disney": "DIS",
+        "coca-cola": "KO",
         "coca cola": "KO",
         "cocacola": "KO",
         "ibm": "IBM",
@@ -102,6 +104,12 @@ def extract_date_parts(question: str) -> Dict[str, str]:
         day = f"{int(m.group(2)):02d}"
         year = m.group(3)
         return {"date": f"{year}-{month}-{day}", "year": year, "month": month}
+    # Thêm pattern cho "March 2025" (tháng + năm)
+    m = re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})", q, re.I)
+    if m:
+        month = months[m.group(1).lower()]
+        year = m.group(2)
+        return {"year": year, "month": month}
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", q)
     if m:
         return {"date": f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "year": m.group(1), "month": m.group(2)}

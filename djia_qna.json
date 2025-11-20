@@ -389,7 +389,7 @@
     "type": "analytical",
     "complexity": "easy",
     "question": "What was the average closing price of Microsoft in March 2025?",
-    "answer": "About $410.00"
+    "answer": "The average closing price of Microsoft in March 2025 was $387.65."
   },
   {
     "number": 57,
@@ -417,7 +417,7 @@
     "type": "analytical",
     "complexity": "easy",
     "question": "What was the average closing price of Boeing in the second half of 2023?",
-    "answer": "Roughly $200.00"
+    "answer": "The average closing price of Boeing in the second half of 2023 was $216.33."
   },
   {
     "number": 61,
@@ -431,7 +431,7 @@
     "type": "analytical",
     "complexity": "medium",
     "question": "What was the average closing price of Apple during the first quarter of 2025?",
-    "answer": "Approximately $230"
+    "answer": "The average closing price of Apple during the first quarter of 2025 was $231.56."
   },
   {
     "number": 63,
