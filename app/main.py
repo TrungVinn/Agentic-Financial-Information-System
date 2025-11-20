@@ -38,6 +38,17 @@ with tab_chat:
             with st.chat_message(msg.get("role", "assistant")):
                 st.write(msg.get("content", ""))
                 
+                # Hiển thị biểu đồ (nếu có trong lịch sử)
+                chart_json = msg.get("chart_json")
+                if chart_json:
+                    try:
+                        import plotly.graph_objects as go
+                        import json
+                        chart_dict = json.loads(chart_json)
+                        chart = go.Figure(chart_dict)
+                        st.plotly_chart(chart, use_container_width=True)
+                    except Exception:
+                        pass
                 
                 sql = msg.get("sql")
                 if sql:
@@ -78,6 +89,11 @@ with tab_chat:
                         # Hiển thị answer ngắn gọn
                         st.write(result.get("answer", ""))
                         
+                        # Hiển thị biểu đồ (nếu có)
+                        chart = result.get("chart")
+                        if chart is not None:
+                            st.plotly_chart(chart, use_container_width=True)
+                        
                         # SQL và bảng
                         if result.get("sql"):
                             with st.expander("SQL đã chạy"):
@@ -95,12 +111,22 @@ with tab_chat:
                             df_json = df.to_json(orient="records") if isinstance(df, pd.DataFrame) else ""
                         except Exception:
                             df_json = ""
+                        
+                        # Convert chart to JSON for storage
+                        chart_json = ""
+                        try:
+                            if chart is not None:
+                                chart_json = chart.to_json()
+                        except Exception:
+                            chart_json = ""
+                        
                         st.session_state.messages.append({
                             "role": "assistant",
                             "content": result.get("answer", ""),
                             "sql": result.get("sql", ""),
                             "used_sample": result.get("used_sample", False),
                             "df_json": df_json,
+                            "chart_json": chart_json,
                             "note": note,
                         })
                     except Exception as e:

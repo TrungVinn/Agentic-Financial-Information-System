@@ -1,21 +1,30 @@
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 
+from nodes.planner import plan_query
 from nodes.sql_template_matcher import match_sql_template
 from nodes.sql_llm_generator import generate_sql
 from nodes.sql_executor import execute_sql
 from nodes.answer_summarizer import summarize_answer
+from nodes.chart_generator import generate_chart
 
 
 def build_djia_graph():
     graph = StateGraph(dict)
 
+    # Add all nodes
+    graph.add_node("plan_query", plan_query)
     graph.add_node("match_sql_template", match_sql_template)
     graph.add_node("generate_sql", generate_sql)
     graph.add_node("execute_sql", execute_sql)
+    graph.add_node("generate_chart", generate_chart)
     graph.add_node("summarize_answer", summarize_answer)
 
-    graph.set_entry_point("match_sql_template")
+    # Start with planning
+    graph.set_entry_point("plan_query")
+
+    # After planning -> match templates
+    graph.add_edge("plan_query", "match_sql_template")
 
     # If matched, go execute; else generate first
     def need_llm(state: Dict[str, Any]) -> str:
@@ -26,8 +35,14 @@ def build_djia_graph():
     # After generate_sql -> execute
     graph.add_edge("generate_sql", "execute_sql")
 
-    # After execute -> summarize
-    graph.add_edge("execute_sql", "summarize_answer")
+    # After execute -> decide if need chart
+    def need_chart(state: Dict[str, Any]) -> str:
+        return "generate_chart" if state.get("needs_chart", False) else "summarize_answer"
+
+    graph.add_conditional_edges("execute_sql", need_chart, {"generate_chart": "generate_chart", "summarize_answer": "summarize_answer"})
+
+    # After chart -> summarize
+    graph.add_edge("generate_chart", "summarize_answer")
 
     # End
     graph.add_edge("summarize_answer", END)
@@ -43,9 +58,20 @@ def run_djia_graph(question: str) -> Dict[str, Any]:
     
     result = app.invoke({"question": question})
     
-    # Step 1: Ticker Extraction + SQL Template Matching (gộp lại)
+    # Step 0: Planning (nếu là câu hỏi phức tạp)
+    complexity = result.get("complexity", {})
+    if complexity.get("is_multi_step"):
+        workflow_steps.append({
+            "step": 1,
+            "node": "plan_query",
+            "description": "Phân tích và lên kế hoạch cho câu hỏi phức tạp",
+            "status": "completed",
+            "result": f"Độ phức tạp: Multi-step, Cần biểu đồ: {complexity.get('needs_chart')}"
+        })
+    
+    # Step 1: Ticker Extraction + SQL Template Matching
     workflow_steps.append({
-        "step": 1,
+        "step": len(workflow_steps) + 1,
         "node": "match_sql_template",
         "description": "Trích xuất ticker và tìm SQL mẫu phù hợp",
         "status": "completed",
@@ -55,7 +81,7 @@ def run_djia_graph(question: str) -> Dict[str, Any]:
     # Step 2: SQL Generation (nếu cần)
     if not result.get("sql"):
         workflow_steps.append({
-            "step": 2,
+            "step": len(workflow_steps) + 1,
             "node": "generate_sql",
             "description": "Sinh SQL bằng Gemini AI",
             "status": "completed",
@@ -71,7 +97,17 @@ def run_djia_graph(question: str) -> Dict[str, Any]:
         "result": f"Kết quả: {len(result.get('df', []))} dòng" if result.get("df") is not None else "Lỗi thực thi"
     })
     
-    # Step 4: Answer Summarization
+    # Step 4: Chart Generation (nếu cần)
+    if result.get("needs_chart"):
+        workflow_steps.append({
+            "step": len(workflow_steps) + 1,
+            "node": "generate_chart",
+            "description": f"Tạo biểu đồ {result.get('chart_type', 'line')}",
+            "status": "completed" if result.get("chart") else "skipped",
+            "result": f"Biểu đồ: {'Có' if result.get('chart') else 'Không'}"
+        })
+    
+    # Step 5: Answer Summarization
     workflow_steps.append({
         "step": len(workflow_steps) + 1,
         "node": "summarize_answer",
@@ -90,13 +126,15 @@ def run_djia_graph(question: str) -> Dict[str, Any]:
     # Chuẩn hóa output
     return {
         "success": success,
-        "sql": result.get("actual_sql", result.get("sql", "")),  # Ưu tiên actual_sql đã thay thế parameters
-        "actual_sql": result.get("actual_sql", result.get("sql", "")),  # Đảm bảo actual_sql được trả về
+        "sql": result.get("actual_sql", result.get("sql", "")),
+        "actual_sql": result.get("actual_sql", result.get("sql", "")),
         "df": result.get("df"),
         "answer": result.get("answer", ""),
         "used_sample": result.get("used_sample", False),
         "error": result.get("error"),
-        "workflow": workflow_steps,  # Thêm luồng hoạt động
+        "workflow": workflow_steps,
+        "chart": result.get("chart"),  # Thêm biểu đồ vào output
+        "complexity": complexity,  # Thêm độ phức tạp
     }
 
 

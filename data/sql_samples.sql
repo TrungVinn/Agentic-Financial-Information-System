@@ -586,3 +586,224 @@ WITH yearly_yield AS (
 SELECT ROUND(AVG(dividend_yield), 4) AS avg_dividend_yield
 FROM yearly_yield;
 
+-- -----------------------------
+-- ANALYTICAL, DIFFICULT (ADVANCED ANALYTICS)
+
+-- MẪU CÂU HỎI: Độ lệch chuẩn (standard deviation) của giá đóng cửa {company} trong {year}?
+-- EN: What was the standard deviation of {company}'s daily closing prices in {year}?
+-- FIELDS: std_dev
+WITH stats AS (
+  SELECT 
+    AVG(close) as mean_close,
+    COUNT(*) as n
+  FROM prices
+  WHERE ticker = :ticker
+    AND strftime('%Y', date) = :year
+)
+SELECT ROUND(SQRT(SUM((close - mean_close) * (close - mean_close)) / (n - 1)), 2) AS std_dev
+FROM prices, stats
+WHERE ticker = :ticker
+  AND strftime('%Y', date) = :year;
+
+-- MẪU CÂU HỎI: Có bao nhiêu ngày giao dịch {company} đóng cửa trên {price}?
+-- EN: How many trading days in {year} saw {company}'s closing price above {price}?
+-- FIELDS: days_count
+SELECT COUNT(*) AS days_count
+FROM prices
+WHERE ticker = :ticker
+  AND strftime('%Y', date) = :year
+  AND close > :price;
+
+-- MẪU CÂU HỎI: Biến động giá (volatility) hàng ngày của {company} trong {year}?
+-- EN: What was the daily volatility of {company} in {year}?
+-- FIELDS: daily_volatility
+WITH daily_returns AS (
+  SELECT 
+    date,
+    (close - LAG(close) OVER (ORDER BY date)) / LAG(close) OVER (ORDER BY date) * 100 AS daily_return
+  FROM prices
+  WHERE ticker = :ticker
+    AND strftime('%Y', date) = :year
+),
+stats AS (
+  SELECT 
+    AVG(daily_return) as mean_return,
+    COUNT(*) as n
+  FROM daily_returns
+  WHERE daily_return IS NOT NULL
+)
+SELECT ROUND(SQRT(SUM((daily_return - mean_return) * (daily_return - mean_return)) / (n - 1)), 2) AS daily_volatility
+FROM daily_returns, stats
+WHERE daily_return IS NOT NULL;
+
+-- MẪU CÂU HỎI: Tổng lợi nhuận (total return) của {company} trong {year}?
+-- EN: Calculate the total return of {company} for {year}
+-- FIELDS: total_return_pct
+WITH year_prices AS (
+  SELECT 
+    (SELECT close FROM prices WHERE ticker = :ticker AND strftime('%Y', date) = :year ORDER BY date ASC LIMIT 1) as start_price,
+    (SELECT close FROM prices WHERE ticker = :ticker AND strftime('%Y', date) = :year ORDER BY date DESC LIMIT 1) as end_price
+)
+SELECT ROUND((end_price - start_price) / start_price * 100, 2) AS total_return_pct
+FROM year_prices;
+
+-- MẪU CÂU HỎI: Giá trị trung vị (median) của giá đóng cửa {company} trong {year}?
+-- EN: Calculate the median closing price of {company} in {year}
+-- FIELDS: median_close
+WITH ordered_prices AS (
+  SELECT 
+    close,
+    ROW_NUMBER() OVER (ORDER BY close) as rn,
+    COUNT(*) OVER () as total
+  FROM prices
+  WHERE ticker = :ticker
+    AND strftime('%Y', date) = :year
+)
+SELECT 
+  ROUND(AVG(close), 2) as median_close
+FROM ordered_prices
+WHERE rn IN ((total + 1) / 2, (total + 2) / 2);
+
+-- MẪU CÂU HỎI: Moving average 30 ngày của {company} vào {date}?
+-- EN: What was the 30-day moving average closing price of {company} on {date}?
+-- FIELDS: ma30_close
+SELECT ROUND(AVG(close), 2) AS ma30_close
+FROM (
+  SELECT close
+  FROM prices
+  WHERE ticker = :ticker
+    AND date(date) <= date(:date)
+  ORDER BY date DESC
+  LIMIT 30
+);
+
+-- MẪU CÂU HỎI: Tuần nào {company} có khối lượng giao dịch cao nhất trong {year}?
+-- EN: What was {company}'s highest weekly trading volume in {year}, and which week was it?
+-- FIELDS: week_start, weekly_volume
+SELECT 
+  date(date, 'weekday 0', '-6 days') as week_start,
+  SUM(volume) as weekly_volume
+FROM prices
+WHERE ticker = :ticker
+  AND strftime('%Y', date) = :year
+GROUP BY strftime('%W', date)
+ORDER BY weekly_volume DESC
+LIMIT 1;
+
+-- MẪU CÂU HỎI: Tỷ lệ tăng trưởng kép hàng năm (CAGR) của {company} từ {start_date} đến {end_date}?
+-- EN: What was the compound annual growth rate (CAGR) of {company} from {start_date} to {end_date}?
+-- FIELDS: cagr_pct
+WITH price_range AS (
+  SELECT 
+    (SELECT close FROM prices WHERE ticker = :ticker AND date(date) = date(:start_date)) as start_price,
+    (SELECT close FROM prices WHERE ticker = :ticker AND date(date) = date(:end_date)) as end_price,
+    (julianday(:end_date) - julianday(:start_date)) / 365.25 as years
+)
+SELECT ROUND((POWER(end_price / start_price, 1.0 / years) - 1) * 100, 2) AS cagr_pct
+FROM price_range;
+
+-- -----------------------------
+-- COMPARATIVE, DIFFICULT (MULTI-COMPANY ANALYTICS)
+
+-- MẪU CÂU HỎI: Xếp hạng top 3 công ty theo tổng lợi nhuận trong {year}
+-- EN: Rank the top 3 companies by total return in {year}
+-- FIELDS: company, total_return_pct
+WITH returns AS (
+  SELECT 
+    ticker,
+    ((MAX(close) - MIN(close)) / MIN(close)) * 100 as total_return_pct
+  FROM prices
+  WHERE strftime('%Y', date) = :year
+  GROUP BY ticker
+)
+SELECT 
+  c.name as company,
+  ROUND(r.total_return_pct, 2) as total_return_pct
+FROM returns r
+JOIN companies c ON c.symbol = r.ticker
+ORDER BY r.total_return_pct DESC
+LIMIT 3;
+
+-- MẪU CÂU HỎI: Công ty nào có khối lượng giao dịch trung bình cao nhất trong {year}?
+-- EN: Which company had the highest average trading volume in {year}?
+-- FIELDS: company, avg_volume
+SELECT 
+  c.name as company,
+  ROUND(AVG(p.volume), 0) as avg_volume
+FROM prices p
+JOIN companies c ON c.symbol = p.ticker
+WHERE strftime('%Y', p.date) = :year
+GROUP BY p.ticker
+ORDER BY avg_volume DESC
+LIMIT 1;
+
+-- MẪU CÂU HỎI: Công ty nào có biến động thấp nhất (standard deviation) trong {year}?
+-- EN: Which company had the lowest volatility (standard deviation of daily returns) in {year}?
+-- FIELDS: company, volatility
+WITH daily_returns AS (
+  SELECT 
+    ticker,
+    date,
+    (close - LAG(close) OVER (PARTITION BY ticker ORDER BY date)) / 
+     LAG(close) OVER (PARTITION BY ticker ORDER BY date) * 100 AS daily_return
+  FROM prices
+  WHERE strftime('%Y', date) = :year
+),
+volatility AS (
+  SELECT 
+    ticker,
+    SQRT(AVG(daily_return * daily_return) - AVG(daily_return) * AVG(daily_return)) as std_dev
+  FROM daily_returns
+  WHERE daily_return IS NOT NULL
+  GROUP BY ticker
+)
+SELECT 
+  c.name as company,
+  ROUND(v.std_dev, 2) as volatility
+FROM volatility v
+JOIN companies c ON c.symbol = v.ticker
+ORDER BY v.std_dev ASC
+LIMIT 1;
+
+-- MẪU CÂU HỎI: Tương quan (correlation) giữa giá {company_a} và {company_b} trong {year}?
+-- EN: What was the correlation between {company_a}'s and {company_b}'s daily returns in {year}?
+-- FIELDS: correlation
+WITH returns_a AS (
+  SELECT 
+    date,
+    (close - LAG(close) OVER (ORDER BY date)) / LAG(close) OVER (ORDER BY date) AS return_a
+  FROM prices
+  WHERE ticker = :ticker_a
+    AND strftime('%Y', date) = :year
+),
+returns_b AS (
+  SELECT 
+    date,
+    (close - LAG(close) OVER (ORDER BY date)) / LAG(close) OVER (ORDER BY date) AS return_b
+  FROM prices
+  WHERE ticker = :ticker_b
+    AND strftime('%Y', date) = :year
+),
+combined AS (
+  SELECT 
+    a.return_a,
+    b.return_b
+  FROM returns_a a
+  JOIN returns_b b ON a.date = b.date
+  WHERE a.return_a IS NOT NULL AND b.return_b IS NOT NULL
+),
+stats AS (
+  SELECT 
+    AVG(return_a) as mean_a,
+    AVG(return_b) as mean_b,
+    COUNT(*) as n
+  FROM combined
+)
+SELECT 
+  ROUND(
+    SUM((return_a - mean_a) * (return_b - mean_b)) / 
+    (SQRT(SUM((return_a - mean_a) * (return_a - mean_a))) * 
+     SQRT(SUM((return_b - mean_b) * (return_b - mean_b)))),
+  2) AS correlation
+FROM combined, stats;
+
