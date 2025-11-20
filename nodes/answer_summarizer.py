@@ -20,6 +20,12 @@ def derive_answer(df: pd.DataFrame) -> str:
 
 def summarize_answer(state: Dict[str, Any]) -> Dict[str, Any]:
     df = state.get("df")
+    error = state.get("error")
+    
+    if error:
+        answer = f"Không thể thực thi truy vấn do lỗi: {error}"
+        return {**state, "answer": answer}
+    
     answer = derive_answer(df) if df is not None else "Không có dữ liệu phù hợp."
     return {**state, "answer": answer}
 
