@@ -109,14 +109,14 @@
         "type": "comparative",
         "complexity": "difficult",
         "question": "Which company had the largest percentage increase in its stock price during 2024?",
-        "answer": "Salesforce, with its stock rising by approximately 60% in 2024"
+        "answer": "Walmart Inc., with its stock rising by approximately 72% in 2024"
       },
       {
         "number": 15,
         "type": "comparative",
         "complexity": "difficult",
         "question": "Which company had the largest absolute increase in closing price (in dollars) during 2024?",
-        "answer": "UnitedHealth Group, which rose by roughly $120 per share in 2024"
+        "answer": "Goldman Sachs Group, Inc., absolute increase $192  in 2024"
       },
       {
         "number": 16,
@@ -179,17 +179,10 @@
         "type": "analytical",
         "complexity": "medium",
         "question": "What was the average closing price of Apple during the first quarter of 2025?",
-        "answer": "Approximately $230"
+        "answer": "The average closing price of Apple during the first quarter of 2025 was $231.56"
       },
       {
         "number": 25,
-        "type": "analytical",
-        "complexity": "medium",
-        "question": "What was the average closing price of Apple during the first quarter of 2025?",
-        "answer": "The average closing price of Apple during the first quarter of 2025 was $231.56."
-      },
-      {
-        "number": 26,
         "type": "analytical",
         "complexity": "medium",
         "question": "What was the average closing price of Boeing from July through December 2023?",

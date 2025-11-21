@@ -82,11 +82,12 @@ def normalize_text(text: str) -> str:
 
 def extract_ticker(question: str) -> Optional[str]:
     q = normalize_text(question)
-    m = re.search(r"\b([A-Z]{2,5})\b", question)
+    m = re.search(r"\b([A-Z]{1,5})\b", question)
     if m:
         return m.group(1)
     for name, ticker in COMPANY_ALIASES.items():
-        if name in q:
+        pattern = r"\b" + re.escape(name) + r"\b"
+        if re.search(pattern, q):
             return ticker
     return None
 

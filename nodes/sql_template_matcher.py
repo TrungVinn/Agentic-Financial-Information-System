@@ -324,6 +324,16 @@ def match_sample(question: str) -> Optional[str]:
             s = find_sample_with(["split_ratio", "stock splits"])
             if s:
                 heuristic_sql = s
+        # Highest opening price in {year}
+        if not heuristic_sql and ("opening price" in q or "giá mở cửa" in q or "gia mo cua" in q) and has_year and not has_date:
+            if "highest" in q or "cao" in q:
+                s = find_sample_with(["open AS max_open", "order by open desc"])
+                if s:
+                    heuristic_sql = s
+            if not heuristic_sql and ("lowest" in q or "thấp" in q or "thap" in q):
+                s = find_sample_with(["open AS min_open", "order by open asc"])
+                if s:
+                    heuristic_sql = s
 
     # ===== COMPARATIVE, EASY =====
     # 3) Comparative (2 công ty) với date
@@ -456,12 +466,12 @@ def match_sample(question: str) -> Optional[str]:
     if not heuristic_sql and has_year and not has_date and not (t1 and t2):
         # Largest percentage increase in {year}
         if ("largest percentage increase" in q or "tỷ lệ tăng" in q) and ("stock price" in q or "cổ phiếu" in q):
-            s = find_sample_with(["percentage_change", "with price_changes", "max(close) - min(close)"])
+            s = find_sample_with(["percentage_change", "with daily_closes", "row_number() over (partition by ticker order by date asc)"])
             if s:
                 heuristic_sql = s
         # Largest absolute increase in {year}
         if ("largest absolute increase" in q or "mức tăng tuyệt đối" in q) and ("dollars" in q or "usd" in q):
-            s = find_sample_with(["absolute_change", "with price_changes", "max(close) - min(close)"])
+            s = find_sample_with(["absolute_change", "with daily_closes", "last_close - first_close"])
             if s:
                 heuristic_sql = s
         # Largest percentage decline in {year}

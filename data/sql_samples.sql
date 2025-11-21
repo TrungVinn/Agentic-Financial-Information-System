@@ -51,7 +51,7 @@ WHERE ticker = :ticker
 -- MẪU CÂU HỎI: Chia tách cổ phiếu của {company} vào {date}
 -- EN: What was the stock split of {company} on {date}?
 -- FIELDS: answer=stock_splits
-SELECT stock_splits
+SELECT "Stock Splits" AS stock_splits
 FROM prices
 WHERE ticker = :ticker
   AND date(date) = date(:date);
@@ -78,6 +78,26 @@ WHERE ticker = :ticker
 ORDER BY close ASC, date ASC
 LIMIT 1;
 
+-- MẪU CÂU HỎI: Giá mở cửa cao nhất của {company} trong {year}, và khi nào?
+-- EN: What was the highest opening price of {company} in {year}, and when?
+-- FIELDS: date, max_open
+SELECT date, open AS max_open
+FROM prices
+WHERE ticker = :ticker
+  AND strftime('%Y', date) = :year
+ORDER BY open DESC, date ASC
+LIMIT 1;
+
+-- MẪU CÂU HỎI: Giá mở cửa thấp nhất của {company} trong {year}, và ngày nào?
+-- EN: What was the lowest opening price of {company} in {year}, and on what date?
+-- FIELDS: date, min_open
+SELECT date, open AS min_open
+FROM prices
+WHERE ticker = :ticker
+  AND strftime('%Y', date) = :year
+ORDER BY open ASC, date ASC
+LIMIT 1;
+
 -- MẪU CÂU HỎI: {company} trả bao nhiêu lần cổ tức trong {year}?
 -- EN: How many dividends did {company} pay in {year}?
 -- FIELDS: dividends_count
@@ -98,10 +118,10 @@ WHERE ticker = :ticker
 -- MẪU CÂU HỎI: {company} thực hiện chia tách cổ phiếu khi nào và tỷ lệ bao nhiêu?
 -- EN: On what date did {company} execute a stock split, and what was the split ratio?
 -- FIELDS: date, split_ratio
-SELECT date, stock_splits AS split_ratio
+SELECT date, "Stock Splits" AS split_ratio
 FROM prices
 WHERE ticker = :ticker
-  AND stock_splits > 0
+  AND "Stock Splits" > 0
 ORDER BY date ASC;
 
 -- MẪU CÂU HỎI: Trong {year}, {company} trả cổ tức vào những ngày nào và bao nhiêu?
@@ -181,9 +201,9 @@ SELECT a.a_dividends, b.b_dividends FROM a CROSS JOIN b;
 -- EN: On {date}, which had a higher/lower stock split ratio, {company_a} or {company_b}?
 -- FIELDS: a_stock_splits, b_stock_splits
 WITH a AS (
-  SELECT stock_splits AS a_stock_splits FROM prices WHERE ticker = :ticker_a AND date(date) = date(:date)
+  SELECT "Stock Splits" AS a_stock_splits FROM prices WHERE ticker = :ticker_a AND date(date) = date(:date)
 ), b AS (
-  SELECT stock_splits AS b_stock_splits FROM prices WHERE ticker = :ticker_b AND date(date) = date(:date)
+  SELECT "Stock Splits" AS b_stock_splits FROM prices WHERE ticker = :ticker_b AND date(date) = date(:date)
 )
 SELECT a.a_stock_splits, b.b_stock_splits FROM a CROSS JOIN b;
 
@@ -313,58 +333,81 @@ LIMIT 1;
 -- MẪU CÂU HỎI: Vào {date}, công ty nào có tỷ lệ chia tách thấp nhất?
 -- EN: Which company had the lowest stock split ratio on {date}?
 -- FIELDS: company, stock_splits
-SELECT c.name AS company, p.stock_splits AS stock_splits
+SELECT c.name AS company, p."Stock Splits" AS stock_splits
 FROM prices p
 JOIN companies c ON c.symbol = p.ticker
 WHERE DATE(p.date) = date(:date)
-ORDER BY p.stock_splits ASC, c.name ASC
+ORDER BY stock_splits ASC, c.name ASC
 LIMIT 1;
 
 -- MẪU CÂU HỎI: Vào {date}, công ty nào có tỷ lệ chia tách cao nhất?
 -- EN: Which company had the highest stock split ratio on {date}?
 -- FIELDS: company, stock_splits
-SELECT c.name AS company, p.stock_splits AS stock_splits
+SELECT c.name AS company, p."Stock Splits" AS stock_splits
 FROM prices p
 JOIN companies c ON c.symbol = p.ticker
 WHERE DATE(p.date) = date(:date)
-ORDER BY p.stock_splits DESC, c.name ASC
+ORDER BY stock_splits DESC, c.name ASC
 LIMIT 1;
-
--- -----------------------------
--- COMPARATIVE, DIFFICULT
 
 -- MẪU CÂU HỎI: Công ty nào có tỷ lệ tăng giá cổ phiếu lớn nhất trong {year}?
 -- EN: Which company had the largest percentage increase in its stock price during {year}?
 -- FIELDS: company, percentage_change
-WITH price_changes AS (
-  SELECT 
+WITH daily_closes AS (
+  SELECT
     ticker,
-    (MAX(close) - MIN(close)) / MIN(close) * 100 AS percentage_change
-  FROM prices 
+    date,
+    close,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date ASC) AS rn_asc,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn_desc
+  FROM prices
   WHERE strftime('%Y', date) = :year
+),
+bounds AS (
+  SELECT
+    ticker,
+    MAX(CASE WHEN rn_asc = 1 THEN close END) AS first_close,
+    MAX(CASE WHEN rn_desc = 1 THEN close END) AS last_close
+  FROM daily_closes
   GROUP BY ticker
+  HAVING first_close IS NOT NULL AND last_close IS NOT NULL
 )
-SELECT c.name AS company, ROUND(pc.percentage_change, 2) AS percentage_change
-FROM price_changes pc
-JOIN companies c ON c.symbol = pc.ticker
-ORDER BY pc.percentage_change DESC
+SELECT
+  c.name AS company,
+  ROUND((last_close - first_close) / first_close * 100, 2) AS percentage_change
+FROM bounds b
+JOIN companies c ON c.symbol = b.ticker
+ORDER BY percentage_change DESC
 LIMIT 1;
 
 -- MẪU CÂU HỎI: Công ty nào có mức tăng giá tuyệt đối lớn nhất (theo USD) trong {year}?
 -- EN: Which company had the largest absolute increase in closing price (in dollars) during {year}?
 -- FIELDS: company, absolute_change
-WITH price_changes AS (
-  SELECT 
+WITH daily_closes AS (
+  SELECT
     ticker,
-    MAX(close) - MIN(close) AS absolute_change
-  FROM prices 
+    date,
+    close,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date ASC) AS rn_asc,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn_desc
+  FROM prices
   WHERE strftime('%Y', date) = :year
+),
+bounds AS (
+  SELECT
+    ticker,
+    MAX(CASE WHEN rn_asc = 1 THEN close END) AS first_close,
+    MAX(CASE WHEN rn_desc = 1 THEN close END) AS last_close
+  FROM daily_closes
   GROUP BY ticker
+  HAVING first_close IS NOT NULL AND last_close IS NOT NULL
 )
-SELECT c.name AS company, ROUND(pc.absolute_change, 2) AS absolute_change
-FROM price_changes pc
-JOIN companies c ON c.symbol = pc.ticker
-ORDER BY pc.absolute_change DESC
+SELECT
+  c.name AS company,
+  ROUND(last_close - first_close, 2) AS absolute_change
+FROM bounds b
+JOIN companies c ON c.symbol = b.ticker
+ORDER BY absolute_change DESC
 LIMIT 1;
 
 -- MẪU CÂU HỎI: Công ty nào có tỷ lệ giảm giá cổ phiếu lớn nhất trong {year}?

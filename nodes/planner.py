@@ -62,35 +62,12 @@ def detect_query_complexity(question: str) -> Dict[str, Any]:
     }
     
     # ========== PHÁT HIỆN YÊU CẦU VẼ BIỂU ĐỒ ==========
-    # CHỈ vẽ biểu đồ khi có YÊU CẦU RÕ RÀNG từ người dùng
-    # (Tránh tự động vẽ cho các câu hỏi không cần biểu đồ)
+    # Chỉ vẽ biểu đồ khi câu hỏi chứa từ "plot" hoặc "vẽ"
+    chart_trigger_patterns = [r"\bplot\b", r"\bvẽ\b", r"\bve\b"]
+    has_chart_trigger = any(re.search(pattern, q) for pattern in chart_trigger_patterns)
+    has_explicit_chart_request = has_chart_trigger
     
-    # Các từ khóa yêu cầu vẽ biểu đồ CHÍNH XÁC
-    explicit_chart_keywords = [
-        "vẽ", "ve",                        # Tiếng Việt
-        "draw", "plot",                    # Tiếng Anh - vẽ
-        "chart", "graph",                  # Biểu đồ
-        "biểu đồ", "bieu do",             # Tiếng Việt
-        "visualize", "visualization",      # Hình ảnh hóa
-        "show me", "display",              # Hiển thị
-        "hiển thị", "hien thi",           # Tiếng Việt
-        "minh họa", "minh hoa"            # Minh họa
-    ]
-    
-    # Các cụm từ yêu cầu vẽ xu hướng (cần có "show" hoặc "display")
-    trend_chart_phrases = [
-        "show trend", "show the trend",
-        "hiển thị xu hướng", "hien thi xu huong",
-        "xu hướng giá", "xu huong gia",
-        "price trend", "trend of",
-        "show price", "display trend", "visualize trend"
-    ]
-    
-    # Kiểm tra yêu cầu vẽ biểu đồ
-    has_explicit_chart_request = any(keyword in q for keyword in explicit_chart_keywords)
-    has_trend_chart_phrase = any(phrase in q for phrase in trend_chart_phrases)
-    
-    if has_explicit_chart_request or has_trend_chart_phrase:
+    if has_chart_trigger:
         complexity["needs_chart"] = True
         
         # Xác định loại biểu đồ dựa trên từ khóa

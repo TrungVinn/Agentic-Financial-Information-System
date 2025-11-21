@@ -45,18 +45,57 @@ def create_database():
         if column_mapping:
             companies_df = companies_df.rename(columns=column_mapping)
         
-        companies_df.to_sql('companies', conn, if_exists='replace', index=False)
+        # Đồng bộ schema: chỉ giữ các cột đúng định nghĩa và thêm cột còn thiếu
+        company_columns = [
+            "symbol", "name", "sector", "industry", "country", "website",
+            "market_cap", "pe_ratio", "dividend_yield", "week_52_high",
+            "week_52_low", "description"
+        ]
+        for col in company_columns:
+            if col not in companies_df.columns:
+                companies_df[col] = None
+        companies_df = companies_df[company_columns]
+        cursor.execute("DELETE FROM companies")
+        companies_df.to_sql('companies', conn, if_exists='append', index=False)
         print(f"Đã import {len(companies_df)} records vào bảng companies")
         
         # Import dữ liệu prices
         print("Đang import dữ liệu prices...")
         prices_df = pd.read_csv(DJIA_PRICES_CSV)
         
-        # Đổi tên cột Ticker thành ticker để khớp với schema
-        if "Ticker" in prices_df.columns:
-            prices_df = prices_df.rename(columns={"Ticker": "ticker"})
+        # Đổi tên cột để khớp schema
+        price_column_mapping = {
+            "Date": "date",
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Volume": "volume",
+            "Dividends": "dividends",
+            "Stock Splits": "stock_splits",
+            "Ticker": "ticker",
+        }
+        prices_df = prices_df.rename(columns={
+            old: new for old, new in price_column_mapping.items()
+            if old in prices_df.columns
+        })
         
-        prices_df.to_sql('prices', conn, if_exists='replace', index=False)
+        # Chuẩn hoá ngày về định dạng YYYY-MM-DD
+        if "date" in prices_df.columns:
+            prices_df["date"] = pd.to_datetime(prices_df["date"]).dt.strftime("%Y-%m-%d")
+        
+        required_price_columns = [
+            "date", "open", "high", "low", "close",
+            "volume", "dividends", "stock_splits", "ticker"
+        ]
+        for col in required_price_columns:
+            if col not in prices_df.columns:
+                default_value = 0 if col in {"volume", "dividends", "stock_splits"} else None
+                prices_df[col] = default_value
+        
+        prices_df = prices_df[required_price_columns]
+        cursor.execute("DELETE FROM prices")
+        prices_df.to_sql('prices', conn, if_exists='append', index=False)
         print(f"Đã import {len(prices_df)} records vào bảng prices")
         
         # Tạo index để tăng tốc độ truy vấn
