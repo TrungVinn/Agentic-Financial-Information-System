@@ -5,27 +5,7 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from config import DB_PATH, SQL_SAMPLES_FILE, DJIA_COMPANIES_CSV
 from nodes.utils import normalize_text, extract_date_parts, extract_date_range, extract_ticker
-
-def build_chart_sql(chart_request: Optional[Dict[str, Any]]) -> str:
-    if chart_request and chart_request.get("start_date") and chart_request.get("end_date"):
-        return """
-SELECT date, open, high, low, close, volume
-FROM prices
-WHERE ticker = :ticker
-  AND date(date) BETWEEN date(:start_date) AND date(:end_date)
-ORDER BY date ASC;
-""".strip()
-    return """
-WITH recent AS (
-    SELECT date, open, high, low, close, volume
-    FROM prices
-    WHERE ticker = :ticker
-    ORDER BY date DESC
-    LIMIT :window_days
-)
-SELECT * FROM recent
-ORDER BY date ASC;
-""".strip()
+from nodes.chart_generator import build_chart_sql
 
 # Load environment variables
 load_dotenv()
@@ -581,13 +561,14 @@ def match_sql_template(state: Dict[str, Any]) -> Dict[str, Any]:
     question = state.get("question", "")
     needs_chart = state.get("needs_chart", False)
     chart_request = state.get("chart_request")
+    chart_type = state.get("chart_type")
     
     # Trích xuất ticker (gộp logic từ alias_resolver)
     ticker = extract_ticker(question)
     
     if needs_chart:
-        sql = build_chart_sql(chart_request)
-        return {**state, "ticker": ticker, "sql": sql, "used_sample": True}
+        sql = build_chart_sql(question, chart_type, chart_request, ticker)
+        return {**state, "ticker": ticker, "sql": sql, "used_sample": False}
     
     if state.get("force_llm"):
         return {**state, "ticker": ticker, "sql": None, "used_sample": False}

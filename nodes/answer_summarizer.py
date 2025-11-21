@@ -25,11 +25,20 @@ def _derive_answer_fallback(df: pd.DataFrame) -> str:
         val = df.iloc[0, 0]
         if isinstance(val, (int, float)):
             return f"{val}"
+        if isinstance(val, (pd.Timestamp,)):
+            return val.strftime("%Y-%m-%d")
         return str(val)
     for col in ["close", "open", "high", "low", "volume", "max_close", "min_close", "avg_close", "median_close", "a_close", "b_close"]:
         if col in df.columns:
-            return str(df[col].iloc[0])
-    return str(df.iloc[0].to_dict())
+            val = df[col].iloc[0]
+            if isinstance(val, (pd.Timestamp,)):
+                return val.strftime("%Y-%m-%d")
+            return str(val)
+    row = df.iloc[0].to_dict()
+    for k, v in row.items():
+        if isinstance(v, (pd.Timestamp,)):
+            row[k] = v.strftime("%Y-%m-%d")
+    return str(row)
 
 
 def _summarize_with_llm(question: str, df: pd.DataFrame, sql: str = None) -> str:
@@ -77,6 +86,11 @@ def summarize_answer(state: Dict[str, Any]) -> Dict[str, Any]:
         answer = _summarize_with_llm(question, df, sql)
     except Exception as e:
         fallback = _derive_answer_fallback(df)
-        answer = f"{fallback} (LLM fallback: {e})"
+        # Nếu đã có biểu đồ vẽ thành công, không hiển thị thông báo lỗi LLM
+        chart = state.get("chart")
+        if chart is not None:
+            answer = fallback
+        else:
+            answer = f"{fallback} (LLM fallback: {e})"
     
     return {**state, "answer": answer}

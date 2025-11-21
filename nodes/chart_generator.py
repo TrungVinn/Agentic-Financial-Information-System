@@ -1,10 +1,208 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+import json
+import os
+
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.express as px
 import sqlite3
+from dotenv import load_dotenv
+from google import generativeai as google_genai
+
 from config import DB_PATH
 from nodes.utils import extract_ticker, extract_date_range, extract_date_parts
+
+load_dotenv()
+if os.getenv("GOOGLE_API_KEY") in (None, "") and os.getenv("GEMINI_API_KEY"):
+    os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
+
+
+def _required_columns_for_chart(chart_type: Optional[str]) -> List[str]:
+    mapping = {
+        "candlestick": ["date", "open", "high", "low", "close", "volume"],
+        "volume": ["date", "open", "close", "volume"],
+        "comparison": ["date", "ticker", "close"],
+    }
+    return mapping.get(chart_type, ["date", "close", "volume"])
+
+
+def _prepare_data_preview(df: pd.DataFrame, max_rows: int = 60) -> List[Dict[str, Any]]:
+    preview = df.head(max_rows).copy()
+    for col in preview.columns:
+        if pd.api.types.is_datetime64_any_dtype(preview[col]):
+            preview[col] = preview[col].dt.strftime("%Y-%m-%d")
+    return preview.to_dict(orient="records")
+
+
+def build_chart_sql(
+    question: str,
+    chart_type: Optional[str],
+    chart_request: Optional[Dict[str, Any]],
+    ticker: Optional[str],
+) -> Optional[str]:
+    """
+    Sinh SQL bằng LLM để lấy dữ liệu vẽ biểu đồ.
+    Trả về None nếu không thể sinh được.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+    
+    google_genai.configure(api_key=api_key)
+    required_cols = ", ".join(_required_columns_for_chart(chart_type))
+    chart_request_json = json.dumps(chart_request or {}, ensure_ascii=False)
+    ticker_hint = ticker or "unknown"
+    
+    system_prompt = (
+        "Bạn là trợ lý SQL cho SQLite nhằm chuẩn bị dữ liệu vẽ biểu đồ tài chính.\n"
+        "Cơ sở dữ liệu CHỈ có bảng 'prices' (schema: date, open, high, low, close, volume, dividends, stock_splits, ticker)\n"
+        "và bảng 'companies' (symbol, name, ...). Không tồn tại bảng 'stock_prices'.\n"
+        "Luôn trả về một câu SELECT thuần, không markdown, không comment, không giải thích.\n"
+        "Kết quả bắt buộc có cột 'date' định dạng YYYY-MM-DD."
+    )
+    
+    guidance = (
+        f"- Câu hỏi: {question}\n"
+        f"- Loại biểu đồ (gợi ý): {chart_type or 'auto'}\n"
+        f"- Yêu cầu chart JSON: {chart_request_json}\n"
+        f"- Ticker chính (nếu có): {ticker_hint}\n"
+        f"- Cần tối thiểu các cột: {required_cols}\n\n"
+        "Quy tắc bổ sung:\n"
+        "- CHỈ sử dụng bảng prices (và companies nếu thật sự cần tên công ty).\n"
+        "- Nếu biết ticker, dùng WHERE prices.ticker = :ticker.\n"
+        "- Nếu có khoảng ngày, dùng date(date) BETWEEN date(:start_date) AND date(:end_date).\n"
+        "- Nếu không có khoảng ngày, dùng CTE với LIMIT :window_days (ví dụ 180) cho dữ liệu gần nhất.\n"
+        "- Luôn ORDER BY date ASC.\n"
+        "- Đối với comparison, phải trả về cột ticker và ít nhất hai công ty.\n"
+        "- Không được tạo bảng mới hay sử dụng tên bảng khác.\n"
+        "- Không dùng comment hoặc nhiều câu SQL."
+    )
+    
+    prompt = f"{system_prompt}\n\n{guidance}\n\nSQL:"
+    
+    try:
+        model = google_genai.GenerativeModel("gemini-2.0-flash")
+        resp = model.generate_content(prompt)
+        sql = (resp.text or "").strip()
+        
+        if sql.startswith("```"):
+            lines = sql.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            sql = "\n".join(lines).strip()
+        
+        if sql and not sql.endswith(";"):
+            sql += ";"
+        
+        return sql or None
+    except Exception as e:
+        print(f"Error generating chart SQL with LLM: {e}")
+        return None
+
+
+def build_chart_code(
+    question: str,
+    chart_type_hint: Optional[str],
+    chart_request: Optional[Dict[str, Any]],
+    df: pd.DataFrame,
+) -> Optional[str]:
+    """
+    Yêu cầu LLM sinh code Plotly để dựng biểu đồ trực tiếp từ DataFrame df.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key or df is None or df.empty:
+        return None
+    
+    google_genai.configure(api_key=api_key)
+    preview = _prepare_data_preview(df)
+    columns = ", ".join(df.columns.tolist())
+    chart_request_json = json.dumps(chart_request or {}, ensure_ascii=False)
+    data_json = json.dumps(preview, ensure_ascii=False)
+    
+    system_prompt = (
+        "Bạn là trợ lý dựng biểu đồ Plotly bằng Python. "
+        "Hãy đọc câu hỏi và dữ liệu mẫu, sau đó sinh code Python (không markdown) tạo đối tượng Plotly Figure."
+    )
+    
+    guidance = (
+        "Yêu cầu:\n"
+        "- DataFrame có tên là df (pandas DataFrame). Có thể sử dụng pandas (pd), numpy (np), plotly.graph_objects (go), plotly.express (px), make_subplots.\n"
+        "- Code phải gán kết quả cuối cùng vào biến 'figure' kiểu plotly.graph_objects.Figure.\n"
+        "- Nếu cần transform (groupby, pivot, tính lợi suất, correlation…), hãy thực hiện trong code.\n"
+        "- Tự động suy luận loại biểu đồ phù hợp nếu câu hỏi không rõ.\n"
+        "- BẮT BUỘC sử dụng chính DataFrame df; không tái tạo dữ liệu thủ công hay hard-code danh sách điểm dữ liệu.\n"
+        "- Không in/log, không viết markdown, không thêm tiền tố như 'python'. Chỉ trả về code Python thuần.\n"
+        "- Với comparison nhiều ticker, lọc/loop theo ticker. Với correlation heatmap, tạo ma trận tương quan và dùng go.Heatmap hoặc px.imshow.\n"
+        "- Giữ số trace vừa phải (≤5). Đặt tiêu đề, nhãn trục rõ ràng. Dùng format ngày chuẩn nếu trục x là thời gian."
+    )
+    
+    prompt = (
+        f"{system_prompt}\n\n"
+        f"Câu hỏi: {question}\n"
+        f"Chart type hint: {chart_type_hint or 'auto'}\n"
+        f"Chart request JSON: {chart_request_json}\n"
+        f"Các cột sẵn có: {columns}\n"
+        f"Dữ liệu mẫu (JSON):\n{data_json}\n\n"
+        f"{guidance}"
+    )
+    
+    try:
+        model = google_genai.GenerativeModel("gemini-2.0-flash")
+        resp = model.generate_content(prompt)
+        code = (resp.text or "").strip()
+        if code.startswith("```"):
+            parts = code.split("```")
+            code = parts[1] if len(parts) > 1 else code
+        return code.strip()
+    except Exception as e:
+        print(f"Error generating chart code with LLM: {e}")
+        return None
+
+
+def render_chart_from_code(code: Optional[str], df: pd.DataFrame) -> Optional[go.Figure]:
+    if not code:
+        return None
+    code = code.strip()
+    if code.lower().startswith("python"):
+        newline_idx = code.find("\n")
+        code = code[newline_idx + 1:] if newline_idx != -1 else ""
+    local_env: Dict[str, Any] = {
+        "pd": pd,
+        "np": np,
+        "go": go,
+        "px": px,
+        "make_subplots": make_subplots,
+        "df": df.copy(),
+    }
+    try:
+        exec(code, {}, local_env)
+    except Exception as e:
+        print(f"Error executing chart code: {e}\nCode:\n{code}")
+        return None
+    
+    figure = local_env.get("figure")
+    if isinstance(figure, go.Figure):
+        return figure
+    
+    build_fn = local_env.get("build_chart")
+    if callable(build_fn):
+        try:
+            figure = build_fn(df.copy())
+            if isinstance(figure, go.Figure):
+                return figure
+        except Exception as e:
+            print(f"Error calling build_chart(): {e}")
+    
+    for value in local_env.values():
+        if isinstance(value, go.Figure):
+            return value
+    
+    print("LLM code did not produce a Plotly Figure.")
+    return None
 
 
 def create_line_chart(df: pd.DataFrame, ticker: str, title: str = None) -> go.Figure:
@@ -262,6 +460,7 @@ def generate_chart(state: Dict[str, Any]) -> Dict[str, Any]:
     ticker = state.get("ticker")
     needs_chart = state.get("needs_chart", False)
     chart_type = state.get("chart_type", "line")
+    chart_request = state.get("chart_request")
     df = state.get("df")
     
     if not needs_chart:
@@ -286,22 +485,25 @@ def generate_chart(state: Dict[str, Any]) -> Dict[str, Any]:
     if 'date' in df.columns and not pd.api.types.is_datetime64_any_dtype(df['date']):
         df['date'] = pd.to_datetime(df['date'])
     
-    # Tạo biểu đồ theo loại
     chart = None
+    error_msg = None
     try:
-        if chart_type == "candlestick":
-            chart = create_candlestick_chart(df, ticker)
-        elif chart_type == "volume":
-            chart = create_volume_chart(df, ticker)
-        elif chart_type == "comparison":
-            # Lấy danh sách tickers từ df
-            tickers = df['ticker'].unique().tolist() if 'ticker' in df.columns else []
-            if tickers:
-                chart = create_comparison_chart(df, tickers)
-        else:  # default: line chart
-            chart = create_line_chart(df, ticker)
+        code = build_chart_code(question, chart_type, chart_request, df)
+        if not code:
+            error_msg = "LLM không thể sinh code Python để vẽ biểu đồ."
+        else:
+            chart = render_chart_from_code(code, df)
+            if chart is None:
+                error_msg = f"Code Python được sinh ra không tạo được biểu đồ Plotly hợp lệ. Code:\n{code[:500]}..."
     except Exception as e:
-        print(f"Error creating chart: {e}")
-        return {**state, "chart": None, "chart_error": str(e)}
+        error_msg = f"Lỗi khi sinh/thực thi code biểu đồ: {str(e)}"
+        print(f"Error generating chart code via LLM: {e}")
+    
+    if chart is None:
+        return {
+            **state,
+            "chart": None,
+            "chart_error": error_msg or "Không thể tạo biểu đồ từ mô tả của bạn. Hãy cụ thể hơn hoặc thử lại."
+        }
     
     return {**state, "chart": chart, "chart_error": None}
