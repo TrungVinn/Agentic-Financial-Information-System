@@ -82,13 +82,29 @@ def normalize_text(text: str) -> str:
 
 def extract_ticker(question: str) -> Optional[str]:
     q = normalize_text(question)
-    m = re.search(r"\b([A-Z]{1,5})\b", question)
-    if m:
-        return m.group(1)
+    
+    # Bỏ qua các từ không phải ticker
+    ignore_words = {"djia", "plot", "pie", "bar", "scatter", "heatmap", "chart", "graph"}
+    if any(word in q for word in ignore_words):
+        # Nếu có từ "all companies", "each company", "all DJIA" thì không extract ticker
+        if any(phrase in q for phrase in ["all companies", "each company", "all djia", "each djia company", 
+                                          "tất cả công ty", "mỗi công ty"]):
+            return None
+    
+    # Tìm ticker từ alias trước (ưu tiên hơn)
     for name, ticker in COMPANY_ALIASES.items():
         pattern = r"\b" + re.escape(name) + r"\b"
         if re.search(pattern, q):
             return ticker
+    
+    # Tìm ticker từ pattern (chỉ khi không có từ ignore)
+    m = re.search(r"\b([A-Z]{2,5})\b", question)
+    if m:
+        ticker_candidate = m.group(1)
+        # Bỏ qua nếu là từ ignore
+        if ticker_candidate.lower() not in ignore_words:
+            return ticker_candidate
+    
     return None
 
 

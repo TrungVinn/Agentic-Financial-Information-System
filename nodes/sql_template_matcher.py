@@ -562,18 +562,33 @@ def match_sql_template(state: Dict[str, Any]) -> Dict[str, Any]:
     needs_chart = state.get("needs_chart", False)
     chart_request = state.get("chart_request")
     chart_type = state.get("chart_type")
+    complexity = state.get("complexity", {})
     
     # Trích xuất ticker (gộp logic từ alias_resolver)
     ticker = extract_ticker(question)
+    
+    # Kiểm tra nếu câu hỏi về tất cả DJIA companies
+    q = normalize_text(question)
+    is_all_companies = (
+        complexity.get("involves_multiple_companies", False) or
+        any(phrase in q for phrase in [
+            "all companies", "all djia", "each company", "each djia company",
+            "tất cả công ty", "mỗi công ty", "for all djia", "for each djia"
+        ])
+    )
     
     if needs_chart:
         sql = build_chart_sql(question, chart_type, chart_request, ticker)
         return {**state, "ticker": ticker, "sql": sql, "used_sample": False}
     
+    # Nếu câu hỏi về tất cả companies, force dùng LLM thay vì template
+    if is_all_companies:
+        return {**state, "ticker": None, "sql": None, "used_sample": False, "force_llm": True}
+    
     if state.get("force_llm"):
         return {**state, "ticker": ticker, "sql": None, "used_sample": False}
     
-    # Tìm SQL template
+    # Tìm SQL template (chỉ khi không phải all companies)
     sql = match_sample(question)
     used_sample = sql is not None
     

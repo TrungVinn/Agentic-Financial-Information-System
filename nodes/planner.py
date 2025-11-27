@@ -74,6 +74,18 @@ def detect_query_complexity(question: str) -> Dict[str, Any]:
         if any(word in q for word in ["candlestick", "nến", "nen", "ohlc"]):
             # Biểu đồ nến (Open-High-Low-Close)
             complexity["chart_type"] = "candlestick"
+        elif any(word in q for word in ["bar chart", "bar", "cột", "cot", "histogram"]):
+            # Biểu đồ cột (bar chart)
+            complexity["chart_type"] = "bar"
+        elif any(word in q for word in ["pie chart", "pie", "tròn", "tron", "circular"]):
+            # Biểu đồ tròn (pie chart)
+            complexity["chart_type"] = "pie"
+        elif any(word in q for word in ["scatter", "phân tán", "phan tan", "correlation"]):
+            # Biểu đồ phân tán (scatter plot)
+            complexity["chart_type"] = "scatter"
+        elif any(word in q for word in ["heatmap", "heat map", "ma trận", "ma tran"]):
+            # Biểu đồ nhiệt (heatmap)
+            complexity["chart_type"] = "heatmap"
         elif any(word in q for word in ["volume", "khối lượng", "khoi luong"]) and has_explicit_chart_request:
             # Biểu đồ khối lượng giao dịch
             complexity["chart_type"] = "volume"
@@ -133,8 +145,12 @@ def detect_query_complexity(question: str) -> Dict[str, Any]:
         complexity["time_series"] = True
     
     # 5. Kiểm tra MULTI-COMPANY queries
-    # Ví dụ: "all companies", "tất cả công ty"
-    if "all companies" in q or "tất cả công ty" in q or "tat ca cong ty" in q:
+    # Ví dụ: "all companies", "tất cả công ty", "DJIA", "each DJIA company", "top 10 companies"
+    djia_keywords = ["djia", "all companies", "all djia", "each company", "each djia company", 
+                     "tất cả công ty", "tat ca cong ty", "mỗi công ty", "moi cong ty",
+                     "top ", "top companies", "top 10", "top 5", "top 20",  # Top N companies
+                     "largest companies", "biggest companies", "highest companies"]
+    if any(keyword in q for keyword in djia_keywords):
         complexity["involves_multiple_companies"] = True
         complexity["is_multi_step"] = True
     

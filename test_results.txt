@@ -3,8 +3,4 @@ test gọi sql mẫu:
 + 91-97
 + mấy câu còn lại llm trả lời
 test plot (câu hỏi phải chứa keyword "plot", có thể tạo 1 tab khác trả lời mấy câu plot thì ko cần cái này)
-+ 101-103
-+ 108-110
-+ 113-117
-+ 119
-+ các câu plot hỏi về tất cả cty djia chưa plot được
++ trả lời được hết trừ 105 data ko có P/E ratio
