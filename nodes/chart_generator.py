@@ -7,11 +7,12 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
-import sqlite3
+import psycopg2
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from google import generativeai as google_genai
 
-from config import DB_PATH
+from config import DB_CONNECTION_STRING
 from nodes.utils import extract_ticker, extract_date_range, extract_date_parts, normalize_text
 
 load_dotenv()
@@ -126,7 +127,7 @@ def build_chart_sql(
     )
     
     system_prompt = (
-        "Bạn là trợ lý SQL cho SQLite nhằm chuẩn bị dữ liệu vẽ biểu đồ tài chính.\n"
+        "Bạn là trợ lý SQL cho PostgreSQL nhằm chuẩn bị dữ liệu vẽ biểu đồ tài chính.\n"
         "Luôn trả về một câu SELECT thuần, không markdown, không comment, không giải thích.\n"
     )
     
@@ -629,21 +630,21 @@ def create_volume_chart(df: pd.DataFrame, ticker: str, title: str = None) -> go.
 
 def fetch_chart_data(question: str, ticker: str, chart_type: str) -> pd.DataFrame:
     """Lấy dữ liệu từ database để vẽ biểu đồ."""
-    conn = sqlite3.connect(DB_PATH)
+    engine = create_engine(DB_CONNECTION_STRING)
     
     try:
         # Xác định khoảng thời gian
         start_date, end_date = extract_date_range(question)
         date_parts = extract_date_parts(question)
         
-        # Xây dựng SQL query
+        # Xây dựng SQL query (PostgreSQL syntax)
         if chart_type == "comparison":
             # So sánh nhiều công ty - cần tìm tất cả tickers trong câu hỏi
             # Fallback: lấy tất cả công ty trong 1 tháng gần nhất
             sql = """
                 SELECT date, ticker, open, high, low, close, volume
                 FROM prices
-                WHERE date >= date('now', '-1 month')
+                WHERE date >= CURRENT_DATE - INTERVAL '1 month'
                 ORDER BY date ASC, ticker ASC
             """
         else:
@@ -651,14 +652,14 @@ def fetch_chart_data(question: str, ticker: str, chart_type: str) -> pd.DataFram
             where_clauses = [f"ticker = '{ticker}'"]
             
             if start_date and end_date:
-                where_clauses.append(f"date(date) BETWEEN date('{start_date}') AND date('{end_date}')")
+                where_clauses.append(f"date BETWEEN '{start_date}'::date AND '{end_date}'::date")
             elif 'year' in date_parts:
-                where_clauses.append(f"strftime('%Y', date) = '{date_parts['year']}'")
+                where_clauses.append(f"EXTRACT(YEAR FROM date) = {date_parts['year']}")
             elif 'month' in date_parts and 'year' in date_parts:
-                where_clauses.append(f"strftime('%Y-%m', date) = '{date_parts['year']}-{date_parts['month']}'")
+                where_clauses.append(f"EXTRACT(YEAR FROM date) = {date_parts['year']} AND EXTRACT(MONTH FROM date) = {date_parts['month']}")
             else:
                 # Default: last 3 months
-                where_clauses.append("date >= date('now', '-3 months')")
+                where_clauses.append("date >= CURRENT_DATE - INTERVAL '3 months'")
             
             where_clause = " AND ".join(where_clauses)
             
@@ -669,18 +670,21 @@ def fetch_chart_data(question: str, ticker: str, chart_type: str) -> pd.DataFram
                 ORDER BY date ASC
             """
         
-        df = pd.read_sql_query(sql, conn)
+        with engine.connect() as conn:
+            df = pd.read_sql_query(text(sql), conn)
         
-        # Convert date to datetime
+        # Convert date to datetime (PostgreSQL trả về date object)
         if not df.empty and 'date' in df.columns:
             df['date'] = pd.to_datetime(df['date'])
         
         return df
     except Exception as e:
         print(f"Error fetching chart data: {e}")
+        import traceback
+        traceback.print_exc()
         return pd.DataFrame()
     finally:
-        conn.close()
+        engine.dispose()
 
 
 def generate_chart(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -715,8 +719,8 @@ def generate_chart(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Nếu đã có df từ SQL execution, dùng luôn (không fetch lại)
     # Với all companies hoặc sector query, SQL đã trả về đúng dữ liệu
-    if (df is None or df.empty) and not is_all_companies and not is_sector_query:
-        if df is None or 'date' not in df.columns:
+    if not is_all_companies and not is_sector_query:
+        if df is None or df.empty or 'date' not in df.columns:
             df = fetch_chart_data(question, ticker, chart_type)
     
     if df is None or df.empty:

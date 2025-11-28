@@ -1,6 +1,0 @@
-test gọi sql mẫu:
-+ 1-63
-+ 91-97
-+ mấy câu còn lại llm trả lời
-test plot (câu hỏi phải chứa keyword "plot", có thể tạo 1 tab khác trả lời mấy câu plot thì ko cần cái này)
-+ trả lời được hết trừ 105 data ko có P/E ratio

@@ -5,6 +5,7 @@ Configuration file for DJIA Multi-Agent System.
 """
 
 from pathlib import Path
+import os
 
 # ==================== ĐƯỜNG DẪN DỰ ÁN ====================
 
@@ -14,17 +15,23 @@ PROJECT_ROOT = Path(__file__).parent
 # Thư mục chứa dữ liệu CSV và SQL samples
 DATA_DIR = PROJECT_ROOT / "data"
 
-# Thư mục chứa database SQLite
-DB_DIR = PROJECT_ROOT / "db"
-
 
 # ==================== DATABASE ====================
 
-# Đường dẫn đến SQLite database chính
-# Database này lưu trữ:
-# - Thông tin 30 công ty DJIA (bảng companies)
-# - Dữ liệu giá cổ phiếu lịch sử (bảng prices)
-DB_PATH = DB_DIR / "djia.db"
+# PostgreSQL connection config
+POSTGRES_CONFIG = {
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": int(os.getenv("POSTGRES_PORT", 5432)),
+    "database": os.getenv("POSTGRES_DB", "djia"),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "admin"),
+}
+
+# Connection string cho SQLAlchemy
+DB_CONNECTION_STRING = (
+    f"postgresql://{POSTGRES_CONFIG['user']}:{POSTGRES_CONFIG['password']}"
+    f"@{POSTGRES_CONFIG['host']}:{POSTGRES_CONFIG['port']}/{POSTGRES_CONFIG['database']}"
+)
 
 
 # ==================== DỮ LIỆU ĐẦU VÀO ====================
@@ -42,37 +49,38 @@ SQL_SAMPLES_FILE = DATA_DIR / "sql_samples.sql"
 
 # ==================== DATABASE SCHEMA ====================
 
-# Schema cho bảng companies
+# Schema cho bảng companies (PostgreSQL)
 # Lưu trữ thông tin cơ bản và tài chính của 30 công ty DJIA
 COMPANIES_TABLE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS companies (
-    symbol TEXT,              -- Mã cổ phiếu (AAPL, MSFT, ...)
-    name TEXT,                -- Tên công ty đầy đủ
-    sector TEXT,              -- Ngành (Technology, Healthcare, ...)
-    industry TEXT,            -- Lĩnh vực cụ thể
-    country TEXT,             -- Quốc gia
-    website TEXT,             -- Website công ty
-    market_cap REAL,          -- Vốn hóa thị trường
-    pe_ratio REAL,            -- Tỷ lệ giá/thu nhập
-    dividend_yield REAL,      -- Lợi suất cổ tức
-    week_52_high REAL,        -- Giá cao nhất 52 tuần
-    week_52_low REAL,         -- Giá thấp nhất 52 tuần
-    description TEXT          -- Mô tả công ty
+    symbol VARCHAR(10) PRIMARY KEY,    -- CSV column: symbol
+    name TEXT,                         -- CSV column: name
+    sector TEXT,                       -- CSV column: sector
+    industry TEXT,                     -- CSV column: industry
+    country TEXT,                      -- CSV column: country
+    website TEXT,                      -- CSV column: website
+    market_cap NUMERIC(24, 4),         -- CSV column: market_cap
+    pe_ratio NUMERIC(18, 6),           -- CSV column: pe_ratio
+    dividend_yield NUMERIC(18, 6),     -- CSV column: dividend_yield
+    week_52_high NUMERIC(18, 4),       -- CSV column: 52_week_high (renamed)
+    week_52_low NUMERIC(18, 4),        -- CSV column: 52_week_low (renamed)
+    description TEXT                   -- CSV column: description
 );
 """
 
-# Schema cho bảng prices
+# Schema cho bảng prices (PostgreSQL)
 # Lưu trữ dữ liệu giá cổ phiếu theo ngày
 PRICES_TABLE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS prices (
-    date TEXT,                -- Ngày giao dịch (YYYY-MM-DD)
-    open REAL,                -- Giá mở cửa
-    high REAL,                -- Giá cao nhất trong ngày
-    low REAL,                 -- Giá thấp nhất trong ngày
-    close REAL,               -- Giá đóng cửa
-    volume INTEGER,           -- Khối lượng giao dịch
-    dividends REAL,           -- Cổ tức (nếu có)
-    stock_splits REAL,        -- Tỷ lệ chia tách cổ phiếu (nếu có)
-    ticker TEXT               -- Mã cổ phiếu (AAPL, MSFT, ...)
+    date DATE,                         -- CSV column: Date (converted to date)
+    open NUMERIC(18, 6),               -- CSV column: Open
+    high NUMERIC(18, 6),               -- CSV column: High
+    low NUMERIC(18, 6),                -- CSV column: Low
+    close NUMERIC(18, 6),              -- CSV column: Close
+    volume BIGINT,                     -- CSV column: Volume
+    dividends NUMERIC(18, 6),          -- CSV column: Dividends
+    stock_splits NUMERIC(18, 6),       -- CSV column: Stock Splits
+    ticker VARCHAR(10),                -- CSV column: Ticker
+    PRIMARY KEY (date, ticker)
 );
 """

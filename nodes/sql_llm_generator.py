@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional
 import os
+import re
 from google import generativeai as google_genai
 from dotenv import load_dotenv
 
@@ -8,7 +9,7 @@ if os.getenv("GOOGLE_API_KEY") in (None, "") and os.getenv("GEMINI_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 HINT_GUIDANCE = {
-    "std_dev": "Tính độ lệch chuẩn bằng cách dùng SQRT(AVG(close * close) - AVG(close) * AVG(close)) trong SQLite.",
+    "std_dev": "Tính độ lệch chuẩn bằng cách dùng STDDEV_POP(close) hoặc STDDEV_SAMP(close) trong PostgreSQL.",
     "moving_average": "Dùng window function (AVG(close) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)) để tính moving average theo số ngày yêu cầu.",
     "cumulative_return": "Dùng CTE để lấy giá mở đầu và kết thúc rồi tính (end_price - start_price) / start_price * 100 dưới tên percentage_return.",
     "days_count": "Đếm số phiên bằng COUNT(*) với điều kiện close lớn hơn/nhỏ hơn ngưỡng được nói trong câu hỏi.",
@@ -96,20 +97,33 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
     )
     
     system = (
-        "Bạn là trợ lý tạo SQL cho SQLite.\n\n"
+        "Bạn là trợ lý tạo SQL cho PostgreSQL.\n\n"
         f"{schema}"
         f"{constraints}"
         f"{examples}"
         "=== QUY TẮC CHUNG ===\n"
         "- Trả về CHỈ SQL thuần túy, KHÔNG thêm markdown (```sql), giải thích hay comment.\n"
         "- Dùng tham số kiểu :ticker, :date, :year, :month, :quarter nếu phù hợp.\n"
-        "- So sánh ngày: date(date) = date(:date) hoặc strftime('%Y-%m-%d', date) = :date\n"
-        "- Lọc theo năm: strftime('%Y', date) = :year\n"
-        "- Lọc theo tháng: strftime('%m', date) = :month\n"
-        "- KHÔNG dùng LIKE cho date, dùng strftime() hoặc date().\n"
+        "- So sánh ngày: date = CAST(:date AS DATE) hoặc date::date = :date::date\n"
+        "- Lọc theo năm: TO_CHAR(date, 'YYYY') = :year hoặc EXTRACT(YEAR FROM date) = :year\n"
+        "- Lọc theo tháng: TO_CHAR(date, 'MM') = :month hoặc EXTRACT(MONTH FROM date) = :month\n"
+        "- ⚠️ QUAN TRỌNG: KHÔNG BAO GIỜ dùng strftime() - đây là SQLite syntax, PostgreSQL KHÔNG hỗ trợ!\n"
+        "- ⚠️ QUAN TRỌNG: KHÔNG dùng LIKE cho date, dùng TO_CHAR() hoặc EXTRACT().\n"
         "- JOIN: prices.ticker = companies.symbol\n"
+        "- ⚠️ QUAN TRỌNG: Khi truy vấn thông tin từ bảng companies (sector, country, industry, description, website, market_cap, pe_ratio, dividend_yield, week_52_high, week_52_low, etc.),\n"
+        "  NẾU đã biết ticker (có parameter :ticker), PHẢI LUÔN dùng WHERE companies.symbol = :ticker (KHÔNG BAO GIỜ dùng WHERE companies.name = :company hoặc WHERE companies.name ILIKE).\n"
+        "  Ví dụ đúng: SELECT dividend_yield FROM companies WHERE symbol = :ticker;\n"
+        "  Ví dụ đúng: SELECT week_52_high FROM companies WHERE symbol = :ticker;\n"
+        "  Ví dụ sai: SELECT dividend_yield FROM companies WHERE name ILIKE '%' || :company || '%';\n"
+        "  Ví dụ sai: SELECT week_52_high FROM companies WHERE name = 'Apple';\n"
+        "- ⚠️ QUAN TRỌNG: Khi tìm ticker symbol theo tên công ty (ví dụ: 'What is the ticker symbol for Apple?'),\n"
+        "  PHẢI dùng WHERE companies.name ILIKE '%' || :company || '%' (KHÔNG dùng WHERE companies.name = :company hoặc WHERE companies.name = 'Apple').\n"
+        "  Lý do: Tên công ty trong database có thể là 'Apple Inc.' chứ không phải chỉ 'Apple'.\n"
+        "  Ví dụ đúng: SELECT symbol FROM companies WHERE name ILIKE '%' || :company || '%';\n"
+        "  Ví dụ sai: SELECT symbol FROM companies WHERE name = 'Apple';\n"
         "- Có thể dùng CTE, window functions, subqueries.\n"
-        "- SQLite không có STDDEV, dùng: SQRT(AVG(x*x) - AVG(x)*AVG(x)).\n\n"
+        "- PostgreSQL có STDDEV_POP() và STDDEV_SAMP() cho độ lệch chuẩn.\n"
+        "- Parameter binding: dùng :param (sẽ được convert sang %(param)s tự động).\n\n"
         "=== QUY TRÌNH ===\n"
         "Bước 1: Mô tả ngắn gọn (1 câu) SQL phải tính toán gì và GROUP BY gì.\n"
         "Bước 2: Viết SQL.\n"
@@ -133,6 +147,10 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
     
     # Extract SQL từ response (có thể có reasoning trước)
     sql = response_text
+    # Nếu LLM trả về code block ở giữa text -> ưu tiên trích code block
+    code_block_match = re.search(r"```[a-zA-Z0-9_-]*\n(.*?)```", sql, re.DOTALL)
+    if code_block_match:
+        sql = code_block_match.group(1).strip()
     if "SQL:" in response_text:
         sql = response_text.split("SQL:")[-1].strip()
     elif "sql:" in response_text.lower():
@@ -141,9 +159,9 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
     sql = sql.strip()
     
     # Loại bỏ markdown code blocks nếu có
-    # LLM đôi khi trả về: ```sqlite\nSELECT...\n``` hoặc ```sql\nSELECT...\n```
+    # LLM đôi khi trả về: ```postgresql\nSELECT...\n``` hoặc ```sql\nSELECT...\n```
     if sql.startswith("```"):
-        # Tìm dòng đầu tiên (```sqlite, ```sql, hoặc chỉ ```)
+        # Tìm dòng đầu tiên (```postgresql, ```sql, hoặc chỉ ```)
         lines = sql.split("\n")
         if lines[0].startswith("```"):
             lines = lines[1:]  # Bỏ dòng đầu
@@ -151,9 +169,113 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
             lines = lines[:-1]  # Bỏ dòng cuối
         sql = "\n".join(lines).strip()
     
+    # Bỏ mọi phần text/Reasoning đứng trước câu lệnh SQL (chỉ giữ từ khóa SQL đầu tiên)
+    first_sql_match = re.search(r"\b(WITH|SELECT|INSERT|UPDATE|DELETE)\b", sql, re.IGNORECASE)
+    if first_sql_match:
+        sql = sql[first_sql_match.start():].strip()
+    
     # Thêm dấu ; nếu chưa có
     if sql and not sql.endswith(";"):
         sql += ";"
+    
+    # Post-processing: Convert SQLite syntax sang PostgreSQL syntax
+    # Chuyển strftime() thành TO_CHAR() hoặc EXTRACT()
+    # strftime('%Y', date) -> TO_CHAR(date, 'YYYY')
+    sql = re.sub(
+        r"strftime\s*\(\s*'%Y'\s*,\s*(\w+)\s*\)",
+        r"TO_CHAR(\1, 'YYYY')",
+        sql,
+        flags=re.IGNORECASE
+    )
+    # strftime('%m', date) -> TO_CHAR(date, 'MM')
+    sql = re.sub(
+        r"strftime\s*\(\s*'%m'\s*,\s*(\w+)\s*\)",
+        r"TO_CHAR(\1, 'MM')",
+        sql,
+        flags=re.IGNORECASE
+    )
+    # strftime('%d', date) -> TO_CHAR(date, 'DD')
+    sql = re.sub(
+        r"strftime\s*\(\s*'%d'\s*,\s*(\w+)\s*\)",
+        r"TO_CHAR(\1, 'DD')",
+        sql,
+        flags=re.IGNORECASE
+    )
+    # strftime('%W', date) -> TO_CHAR(date, 'IW') (ISO week)
+    sql = re.sub(
+        r"strftime\s*\(\s*'%W'\s*,\s*(\w+)\s*\)",
+        r"TO_CHAR(\1, 'IW')",
+        sql,
+        flags=re.IGNORECASE
+    )
+    # strftime('%Y-%m-%d', date) -> TO_CHAR(date, 'YYYY-MM-DD')
+    sql = re.sub(
+        r"strftime\s*\(\s*'%Y-%m-%d'\s*,\s*(\w+)\s*\)",
+        r"TO_CHAR(\1, 'YYYY-MM-DD')",
+        sql,
+        flags=re.IGNORECASE
+    )
+    # date('now', '-X month') -> CURRENT_DATE - INTERVAL 'X month'
+    sql = re.sub(
+        r"date\s*\(\s*'now'\s*,\s*'-(\d+)\s+month'\s*\)",
+        r"CURRENT_DATE - INTERVAL '\1 month'",
+        sql,
+        flags=re.IGNORECASE
+    )
+    # date('now', '-X day') -> CURRENT_DATE - INTERVAL 'X day'
+    sql = re.sub(
+        r"date\s*\(\s*'now'\s*,\s*'-(\d+)\s+day'\s*\)",
+        r"CURRENT_DATE - INTERVAL '\1 day'",
+        sql,
+        flags=re.IGNORECASE
+    )
+    
+    # Post-processing: Sửa WHERE name = '...' thành WHERE name ILIKE '%...%' khi tìm ticker symbol
+    # Pattern: SELECT symbol FROM companies WHERE name = '...'
+    # Hoặc: SELECT symbol FROM companies WHERE name = :company
+    # Chỉ sửa khi đang SELECT symbol (ticker symbol query)
+    if re.search(r"SELECT\s+symbol\s+FROM\s+companies", sql, re.IGNORECASE):
+        # Sửa WHERE name = 'literal' thành WHERE name ILIKE '%literal%'
+        sql = re.sub(
+            r"WHERE\s+name\s*=\s*'([^']+)'",
+            r"WHERE name ILIKE '%' || '\1' || '%'",
+            sql,
+            flags=re.IGNORECASE
+        )
+        # Sửa WHERE name = :company thành WHERE name ILIKE '%' || :company || '%'
+        sql = re.sub(
+            r"WHERE\s+name\s*=\s*:company\b",
+            r"WHERE name ILIKE '%' || :company || '%'",
+            sql,
+            flags=re.IGNORECASE
+        )
+    
+    # Post-processing: Sửa WHERE name ILIKE '%' || :company || '%' thành WHERE symbol = :ticker
+    # Khi đang query metadata từ companies (không phải ticker symbol query)
+    # Chỉ sửa khi đang SELECT metadata fields (sector, country, industry, description, website, market_cap, pe_ratio, dividend_yield, week_52_high, week_52_low, etc.)
+    metadata_fields_pattern = r"SELECT\s+(?:sector|country|industry|description|website|market_cap|pe_ratio|dividend_yield|week_52_high|week_52_low|52_week_high|52_week_low)\s+FROM\s+companies"
+    if re.search(metadata_fields_pattern, sql, re.IGNORECASE) and not re.search(r"SELECT\s+symbol\s+FROM\s+companies", sql, re.IGNORECASE):
+        # Sửa WHERE name ILIKE '%' || :company || '%' thành WHERE symbol = :ticker
+        sql = re.sub(
+            r"WHERE\s+name\s+ILIKE\s+'%%'\s*\|\|\s*:company\s*\|\|\s*'%%'",
+            r"WHERE symbol = :ticker",
+            sql,
+            flags=re.IGNORECASE
+        )
+        # Sửa WHERE name = :company thành WHERE symbol = :ticker
+        sql = re.sub(
+            r"WHERE\s+name\s*=\s*:company\b",
+            r"WHERE symbol = :ticker",
+            sql,
+            flags=re.IGNORECASE
+        )
+        # Sửa WHERE name = 'literal' thành WHERE symbol = :ticker
+        sql = re.sub(
+            r"WHERE\s+name\s*=\s*'([^']+)'",
+            r"WHERE symbol = :ticker",
+            sql,
+            flags=re.IGNORECASE
+        )
     
     return sql
     

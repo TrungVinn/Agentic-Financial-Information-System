@@ -1,5 +1,5 @@
 """
-SQL Executor Node - Thực thi SQL trên SQLite database.
+SQL Executor Node - Thực thi SQL trên PostgreSQL database.
 
 Module này thực hiện:
 1. Build parameters từ câu hỏi (ticker, date, year, quarter...)
@@ -8,10 +8,13 @@ Module này thực hiện:
 """
 
 from typing import Dict, Any, Optional, Tuple
+from datetime import datetime
 import re
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import pandas as pd
-from config import DB_PATH
+from sqlalchemy import create_engine, text
+from config import DB_CONNECTION_STRING, POSTGRES_CONFIG
 from nodes.utils import (
     normalize_text,
     extract_date_parts,
@@ -73,6 +76,73 @@ def build_params(
         params["ticker"] = ticker
         params["ticker_a"] = ticker  # Cho comparative queries
     
+    # ========== XỬ LÝ CÂU HỎI TÌM TICKER SYMBOL ==========
+    # Ví dụ: "What is the ticker symbol for Walt Disney?" hoặc "symbol of apple"
+    # Pattern: "ticker symbol for {company}", "symbol for {company}", "symbol of {company}", "ticket of {company}"
+    ticker_symbol_patterns = [
+        r"ticker\s+symbol\s+for\s+([^?]+)",
+        r"symbol\s+for\s+([^?]+)",
+        r"ticker\s+of\s+([^?]+)",
+        r"symbol\s+of\s+([^?]+)",
+        r"ticket\s+of\s+([^?]+)",  # "ticket" (typo của "ticker")
+    ]
+    for pattern in ticker_symbol_patterns:
+        match = re.search(pattern, question, re.IGNORECASE)
+        if match:
+            company_name = match.group(1).strip().rstrip('?.,!')
+            # Luôn extract company name cho câu hỏi tìm ticker symbol
+            if company_name:
+                params["company"] = company_name
+            break
+    
+    # Nếu chưa có company nhưng câu hỏi về ticker symbol và có ticker,
+    # thử extract tên công ty từ câu hỏi (fallback)
+    if "company" not in params and ticker:
+        q_lower = normalize_text(question)
+        # Kiểm tra xem có phải câu hỏi về ticker symbol không
+        is_ticker_symbol_query = any(phrase in q_lower for phrase in [
+            "ticker symbol", "symbol of", "ticket of", "ticker of",
+            "mã cổ phiếu", "mã ticker"
+        ])
+        if is_ticker_symbol_query:
+            # Thử extract tên công ty từ các pattern khác
+            # Pattern: "what is the ticker symbol for {company}?"
+            # Hoặc: "symbol of {company}"
+            fallback_patterns = [
+                r"(?:what|which|tell me).*?(?:ticker|symbol|ticket).*?(?:of|for)\s+([^?]+)",
+                r"(?:ticker|symbol|ticket).*?(?:of|for)\s+([^?]+)",
+            ]
+            for pattern in fallback_patterns:
+                match = re.search(pattern, question, re.IGNORECASE)
+                if match:
+                    company_name = match.group(1).strip().rstrip('?.,!')
+                    if company_name and len(company_name) > 0:
+                        params["company"] = company_name
+                        break
+    
+    # Extract company name từ pattern "X of {company}" cho các câu hỏi metadata
+    # Ví dụ: "dividend yield of apple", "52 week high of apple"
+    if "company" not in params:
+        # Pattern: "{field} of {company}"
+        metadata_patterns = [
+            r"(\w+(?:\s+\w+)*)\s+of\s+([^?]+)",
+        ]
+        for pattern in metadata_patterns:
+            match = re.search(pattern, question, re.IGNORECASE)
+            if match:
+                field = match.group(1).strip()
+                company_name = match.group(2).strip().rstrip('?.,!')
+                # Kiểm tra xem field có phải là metadata field không
+                metadata_fields = [
+                    "dividend yield", "52 week high", "52 week low", "week 52 high", "week 52 low",
+                    "market cap", "pe ratio", "p/e ratio", "description", "country", "industry",
+                    "sector", "website", "market capitalization"
+                ]
+                if any(mf in field.lower() for mf in metadata_fields):
+                    if company_name and len(company_name) > 0:
+                        params["company"] = company_name
+                        break
+    
     # Thêm date/time parameters
     if "date" in parts:
         params["date"] = parts["date"]
@@ -84,6 +154,18 @@ def build_params(
         params["start_date"] = start_date
     if end_date:
         params["end_date"] = end_date
+    if start_date and end_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            total_days = max((end_dt - start_dt).days, 0)
+            if total_days == 0:
+                years_value = 1.0
+            else:
+                years_value = max(total_days / 365.0, 0.001)
+            params["years"] = round(years_value, 6)
+        except ValueError:
+            pass
     if quarter:
         params["quarter"] = quarter
     if start_month:
@@ -151,12 +233,12 @@ def build_params(
 
 def run_sql(sql: str, params: Dict[str, Any]) -> Tuple[pd.DataFrame, str]:
     """
-    Thực thi SQL trên SQLite database với bind parameters.
+    Thực thi SQL trên PostgreSQL database với bind parameters.
     
     Hàm này:
-    1. Kết nối đến SQLite database
+    1. Kết nối đến PostgreSQL database
     2. Thực thi SQL với parameters (để tránh SQL injection)
-    3. Tạo SQL hiển thị (thay :params bằng giá trị thực) để show cho user
+    3. Tạo SQL hiển thị (thay %(params)s bằng giá trị thực) để show cho user
     4. Trả về DataFrame kết quả và SQL đã format
     
     Args:
@@ -176,28 +258,42 @@ def run_sql(sql: str, params: Dict[str, Any]) -> Tuple[pd.DataFrame, str]:
         SELECT * FROM prices WHERE ticker = 'AAPL' AND date = '2024-01-15'
         
     Raises:
-        sqlite3.Error: Nếu SQL không hợp lệ hoặc lỗi database
+        psycopg2.Error: Nếu SQL không hợp lệ hoặc lỗi database
     """
-    # Kết nối đến SQLite database
-    conn = sqlite3.connect(DB_PATH)
+    # SQL samples/LLM output đã ở dạng PostgreSQL nên chỉ cần dùng trực tiếp
+    pg_sql = sql
+    
+    # Kết nối đến PostgreSQL database
+    engine = create_engine(DB_CONNECTION_STRING)
     
     try:
         # ========== TẠO SQL HIỂN THỊ ==========
-        # Thay :param bằng giá trị thực để show cho user
+        # Thay :param và %(param)s bằng giá trị thực để show cho user
         # KHÔNG dùng SQL này để execute (dùng SQL gốc với params để tránh SQL injection)
-        display_sql = sql
+        display_sql = pg_sql
         
-        # Sắp xếp params theo độ dài để tránh thay thế sai
-        # Ví dụ: ticker_a phải thay trước ticker (tránh nhầm ticker_a thành AAPL_a)
+        # Sắp xếp params theo độ dài để tránh thay thế sai (thay thế param dài trước)
         sorted_params = sorted(params.items(), key=lambda x: len(x[0]), reverse=True)
         
         for param_name, param_value in sorted_params:
+            # Format giá trị để hiển thị
             if isinstance(param_value, str):
                 # String parameters cần có dấu nháy
-                display_sql = display_sql.replace(f":{param_name}", f"'{param_value}'")
+                formatted_value = f"'{param_value}'"
+            elif param_value is None:
+                formatted_value = "NULL"
             else:
                 # Số không cần dấu nháy
-                display_sql = display_sql.replace(f":{param_name}", str(param_value))
+                formatted_value = str(param_value)
+            
+            # Thay thế cả :param và %(param)s
+            # Dùng regex để tránh thay thế nhầm (ví dụ :ticker trong :ticker_a)
+            # Pattern: :param_name không phải là phần của từ khác
+            pattern1 = r":\b" + re.escape(param_name) + r"\b"
+            display_sql = re.sub(pattern1, formatted_value, display_sql)
+            # Pattern: %(param_name)s
+            pattern2 = r"%\(" + re.escape(param_name) + r"\)s"
+            display_sql = re.sub(pattern2, formatted_value, display_sql)
         
         # Loại bỏ comment lines để SQL hiển thị gọn gàng
         display_sql = "\n".join(
@@ -205,14 +301,14 @@ def run_sql(sql: str, params: Dict[str, Any]) -> Tuple[pd.DataFrame, str]:
         ).strip()
         
         # ========== THỰC THI SQL ==========
-        # Dùng SQL gốc với bind parameters (an toàn, tránh SQL injection)
-        df = pd.read_sql_query(sql, conn, params=params)
+        # Dùng SQL đã convert với bind parameters (an toàn, tránh SQL injection)
+        with engine.connect() as conn:
+            df = pd.read_sql_query(text(pg_sql), conn, params=params)
         
         return df, display_sql
         
     finally:
-        # Đảm bảo đóng connection
-        conn.close()
+        engine.dispose()
 
 
 def execute_sql(state: Dict[str, Any]) -> Dict[str, Any]:

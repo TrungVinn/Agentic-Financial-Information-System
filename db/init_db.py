@@ -1,4 +1,5 @@
-import sqlite3
+import psycopg2
+from psycopg2.extras import execute_values
 import pandas as pd
 import sys
 from pathlib import Path
@@ -6,24 +7,30 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
+from sqlalchemy import create_engine
+
 from config import (
-    DB_PATH, 
+    POSTGRES_CONFIG,
     DJIA_COMPANIES_CSV, 
     DJIA_PRICES_CSV,
     COMPANIES_TABLE_SCHEMA,
-    PRICES_TABLE_SCHEMA
+    PRICES_TABLE_SCHEMA,
+    DB_CONNECTION_STRING,
 )
 
 def create_database():
     """Tạo database và import dữ liệu từ CSV"""
     
-    # Tạo thư mục db nếu chưa có
-    DB_PATH.parent.mkdir(exist_ok=True)
-    
-    # Kết nối database
-    conn = sqlite3.connect(DB_PATH)
+    # Kết nối PostgreSQL database
+    try:
+        conn = psycopg2.connect(**POSTGRES_CONFIG)
     cursor = conn.cursor()
+    except psycopg2.OperationalError as e:
+        print(f"Lỗi kết nối PostgreSQL: {e}")
+        print(f"Vui lòng kiểm tra config: {POSTGRES_CONFIG}")
+        return
     
+    engine = None
     try:
         # Tạo bảng companies
         cursor.execute(COMPANIES_TABLE_SCHEMA)
@@ -35,7 +42,7 @@ def create_database():
         print("Đang import dữ liệu companies...")
         companies_df = pd.read_csv(DJIA_COMPANIES_CSV)
         
-        # Đổi tên cột để khớp với schema mới
+        # Đổi tên cột để khớp với schema
         column_mapping = {}
         if "52_week_high" in companies_df.columns:
             column_mapping["52_week_high"] = "week_52_high"
@@ -55,8 +62,15 @@ def create_database():
             if col not in companies_df.columns:
                 companies_df[col] = None
         companies_df = companies_df[company_columns]
+        
+        # Xóa dữ liệu cũ
         cursor.execute("DELETE FROM companies")
-        companies_df.to_sql('companies', conn, if_exists='append', index=False)
+        conn.commit()
+        
+        # Import dữ liệu vào PostgreSQL
+        if engine is None:
+            engine = create_engine(DB_CONNECTION_STRING)
+        companies_df.to_sql('companies', engine, if_exists='append', index=False, method='multi')
         print(f"Đã import {len(companies_df)} records vào bảng companies")
         
         # Import dữ liệu prices
@@ -80,9 +94,15 @@ def create_database():
             if old in prices_df.columns
         })
         
-        # Chuẩn hoá ngày về định dạng YYYY-MM-DD
+        # Chuẩn hoá ngày về định dạng DATE (PostgreSQL)
         if "date" in prices_df.columns:
-            prices_df["date"] = pd.to_datetime(prices_df["date"]).dt.strftime("%Y-%m-%d")
+            parsed_dates = pd.to_datetime(
+                prices_df["date"],
+                errors="coerce",
+                utc=True,
+            )
+            parsed_dates = parsed_dates.dt.tz_localize(None)
+            prices_df["date"] = parsed_dates.dt.date
         
         required_price_columns = [
             "date", "open", "high", "low", "close",
@@ -94,8 +114,15 @@ def create_database():
                 prices_df[col] = default_value
         
         prices_df = prices_df[required_price_columns]
+        
+        # Xóa dữ liệu cũ
         cursor.execute("DELETE FROM prices")
-        prices_df.to_sql('prices', conn, if_exists='append', index=False)
+        conn.commit()
+        
+        # Import dữ liệu vào PostgreSQL
+        if engine is None:
+            engine = create_engine(DB_CONNECTION_STRING)
+        prices_df.to_sql('prices', engine, if_exists='append', index=False, method='multi')
         print(f"Đã import {len(prices_df)} records vào bảng prices")
         
         # Tạo index để tăng tốc độ truy vấn
@@ -106,7 +133,7 @@ def create_database():
         print("Database đã được tạo thành công!")
         
         # Hiển thị thông tin database
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';")
         tables = cursor.fetchall()
         print(f"Các bảng trong database: {[table[0] for table in tables]}")
         
@@ -120,8 +147,13 @@ def create_database():
         
     except Exception as e:
         print(f"Lỗi khi tạo database: {e}")
+        import traceback
+        traceback.print_exc()
         conn.rollback()
     finally:
+        if engine is not None:
+            engine.dispose()
+        if conn:
         conn.close()
 
 if __name__ == "__main__":

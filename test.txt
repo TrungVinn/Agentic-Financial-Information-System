@@ -1,0 +1,172 @@
+-- FACTUAL, EASY
+1. Question: What was the opening price of Boeing on August 1, 2023?
+Answer: $237.55
+
+2. Question: What was the closing price of Microsoft on March 15, 2024?
+Answer: $413.26
+
+3. What was the highest price Apple reached on February 28, 2025?
+Answer: $242.09
+
+4. Question: What was the lowest price Disney traded at on November 1, 2023?
+Answer: $79.20
+
+5. Question: What was the trading volume of Apple on January 3, 2024?
+Answer: 58,414,500 shares
+
+6. Question: what is dividens of apple of november 10, 2023
+Answer: 0.24
+
+7. Question: what is stock split of apple of november 10, 2023
+Answer: 0.0
+
+8. Question: What is the ticker symbol for Microsoft
+Answer: The ticker symbol for Microsoft is MSFT.
+
+9. Question: Which sector does UnitedHealth Group belong to?
+Answer: Healthcare
+
+10. Question: Industry of Walmart Inc. ?
+Answer: Discount Stores
+
+11. Question: Country of Verizon?
+Answer: United States
+
+12. Question: website of 3M Company?
+Answer: https://www.3m.com
+
+13. Question: market cap of Boeing?
+Answer: 134175367168
+
+14. Question: P/E ratio of Salesforce?
+Answer: 42.18
+
+15. Question: Dividend yield of Coca-Cola?
+Answer: 284
+
+16. Question: 52 week high of American Express Company?
+Answer: The 52 week high of American Express Company is 326.27.
+
+17. Question: 52 week low of Goldman Sachs Group?
+Answer: The 52 week low of Goldman Sachs Group is 425.19.
+
+-- FACTUAL, MEDIUM
+
+1. Question: What was the lowest opening price of Verizon in 2023, and on what date did it occur?
+Answer: The lowest opening price of Verizon in 2023 was 27.87, and it occurred on 2023-10-09.
+
+2. Question: On what date did Apple stock reach its highest closing price in 2024, and what was that price?
+Answer: Apple stock reached its highest closing price of 258.74 on 2024-12-26.
+
+3. Question: How many dividends did Apple pay in 2024?
+Answer: 4
+
+4. Question: What dividend per share did Microsoft pay on May 17, 2023?
+Answer: $0.68
+
+5. Question: On what date did Walmart execute a stock split, and what was the split ratio?
+Answer: February 26, 2024 (3-for-1 split)
+
+6. Question: On which dates in 2024 did Microsoft pay dividends, and what were the amounts?
+Answer: Mar 14 ($0.75), May 15 ($0.75), Aug 8 ($0.75), Nov 21 ($0.83)
+
+-- COMPARATIVE, EASY
+
+1. Question:  On January 15, 2025, which company had a higher closing price, Apple or Microsoft?
+Answer: On January 15, 2025, Microsoft had a higher closing price at $425.46, compared to Apple’s $237.61
+
+2. Question:  On July 1, 2024, which had a lower opening price: Coca-Cola or McDonald’s
+Answer: On July 1, 2024, Coca-Cola had a lower opening price (62.65) than McDonald's (250.40).
+
+3. Question: On October 2, 2024, which company had a higher intraday high: Goldman Sachs or Visa?
+Answer: On October 2, 2024, Goldman Sachs had a higher intraday high (489.99) than Visa (276.65).
+
+4. Question: On November 5, 2024, which company had a lower intraday low, Amgen or Boeing
+Answer: On November 5, 2024, Boeing had a lower intraday low of 150.65 compared to Amgen's 308.05.
+
+5. Question: On December 11, 2024, which company had a higher volume, Disney or Coca Cola?
+Answer: On December 11, 2024, Coca-Cola had a higher volume (32,819,000) than Disney (6,426,800).
+
+-- COMPARATIVE, MEDIUM
+
+1. Question: On what date did Apple stock reach its highest closing price in 2024, and what was that price?
+Answer: On December 26, 2024, Apple stock reached its highest closing price of $258.74.
+
+2. Question: What was the lowest opening price of Verizon in 2023, and on what date did it occur?
+Answer: The lowest opening price of Verizon in 2023 was $27.87, and it occurred on 2023-10-09.
+
+3. Question: Which company had the highest average trading volume in 2024
+Answer: The company with the highest average trading volume in 2024 was Intel Corporation with an average volume of 61,634,910.
+
+4. Question: Which company had the lowest volatility (standard deviation of daily returns) in 2024?
+Answer: The lowest volatility in 2024 is Coca-Cola Company (The) (KO) with a volatility of 0.008.
+
+5. Question: Which company experienced the highest single-day percentage drop in 2023?
+Answer: Walgreens Boots Alliance, Inc. (WBA) experienced the highest single-day percentage drop in 2023, with a drop of -6.91%.
+
+6. Question: Which company experienced the highest single-day percentage gain in 2025?
+Answer: Intel Corporation (INTC) experienced the highest single-day percentage gain in 2025, with a gain of 19.15%.
+
+--COMPARATIVE, HARD
+
+1. Question: Which company had the largest percentage increase in its stock price during 2024?
+Answer: Walmart Inc. had the largest percentage increase in its stock price during 2024, with an increase of 72.2%.
+
+2. Question: Which company had the largest percentage decline in stock price during 2024?
+Answer: Walgreens Boots Alliance, Inc. had the largest percentage decline in stock price during 2024, with a decline of -62.13%.
+
+3. Question: Which company had the largest absolute increase in closing price (in dollars) during 2024?
+Answer: The Goldman Sachs Group, Inc. had the largest absolute increase in closing price, with an increase of $192.55.
+
+4. Question: Which company had the largest percentage decline in stock price during 2024?
+Answer: Walgreens Boots Alliance, Inc. had the largest percentage decline in stock price during 2024, with a decline of 62.13%.
+
+5. Question: By how many dollars did Boeing’s closing price change from January 2, 2024 to December 31, 2024?
+Answer: Boeing's closing price decreased by 74.76 USD from January 2, 2024 to December 31, 2024.
+
+--ANALYTICAL, EASY
+
+1. Question: What was the average closing price of Microsoft in March 2025?
+Answer: The average closing price of Microsoft in March 2025 was 387.65.
+
+2. Question: What was the average opening price of Apple during Q1 2025 (Jan–Mar 2025)?
+Answer: The average opening price of Apple during Q1 2025 was $231.49.
+
+3. Question: What was the average opening price of Boeing in the first half of 2023?
+Answer: The average opening price of Boeing in the first half of 2023 was $207.34
+
+4. Question: What was the average closing price of Boeing in the second half of 2023?
+Answer: The average closing price of Boeing in the second half of 2023 was $216.33.
+
+5. Question: What was the average daily trading volume of Apple in 2024?
+Answer: The average daily trading volume of Apple in 2024 was 57,127,254.
+
+6. Question: By what percentage did Apple’s stock price increase in 2024?
+Answer: Apple's stock price increased by 35.56% in 2024.
+
+7. Question: What was the moving average (30-day) closing price of Microsoft on April 30, 2024?
+Answer: The 30-day moving average closing price of Microsoft on April 30, 2024, was $412.95.
+
+8. Question: What was Apple’s highest weekly trading volume in 2024, and which week was it?
+Answer: Apple's highest weekly trading volume in 2024 was 635,755,100 on the week of June 10, 2024.
+
+-- ANALYTICAL, MEDIUM
+
+1. Question: What was the total trading volume for Microsoft in 2024
+Answer: The total trading volume for Microsoft in 2024 was 5,188,132,300.
+
+2. Question: What was the average closing price of Boeing from July through December 2023
+Answer: The average closing price of Boeing from July through December 2023 was $216.33.
+
+3. Question: Calculate the cumulative return of Microsoft from January 2 to December 31, 2024.
+Answer: The cumulative return of Microsoft from January 2 to December 31, 2024 is 14.5%.
+
+4. Question: Calculate the median closing price of Disney in 2024
+Answer: The median closing price of Disney in 2024 was $100.14.
+
+5. Question: What was the compound annual growth rate (CAGR) of Apple from Jan 1, 2023 to Dec 31, 2024?
+Answer: The CAGR of Apple from Jan 1, 2023 to Dec 31, 2024 is 24.21%.
+
+-- ANALYTICAL, HARD
+
+llm gen sql, chưa tạo mẫu

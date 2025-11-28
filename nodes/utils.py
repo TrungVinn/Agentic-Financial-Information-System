@@ -1,8 +1,7 @@
 import re
-import sqlite3
 from typing import Dict, Any, Optional, Tuple, List
 import pandas as pd
-from config import DB_PATH, SQL_SAMPLES_FILE, DJIA_COMPANIES_CSV
+from config import SQL_SAMPLES_FILE, DJIA_COMPANIES_CSV
 
 COMPANY_ALIASES: Dict[str, str] = {}
 
@@ -77,7 +76,18 @@ def load_company_aliases() -> Dict[str, str]:
 COMPANY_ALIASES = load_company_aliases()
 
 def normalize_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
+    # Normalize whitespace và lowercase
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    # Normalize dấu nháy đơn: thay tất cả các loại dấu nháy đơn (curly) bằng straight quote
+    normalized = (
+        normalized
+        .replace("\u2019", "'")
+        .replace("\u2018", "'")
+        .replace("\u201B", "'")
+        .replace("’", "'")
+        .replace("‘", "'")
+    )
+    return normalized
 
 
 def extract_ticker(question: str) -> Optional[str]:
@@ -93,8 +103,20 @@ def extract_ticker(question: str) -> Optional[str]:
     
     # Tìm ticker từ alias trước (ưu tiên hơn)
     for name, ticker in COMPANY_ALIASES.items():
-        pattern = r"\b" + re.escape(name) + r"\b"
-        if re.search(pattern, q):
+        # Normalize dấu nháy đơn trong alias để match với câu hỏi đã normalize
+        # (câu hỏi đã được normalize với straight quote U+0027)
+        # Thay thế tất cả các loại dấu nháy đơn (curly U+2019, straight U+0027) bằng straight quote
+        normalized_alias = name
+        # Unicode normalize: thay curly quotes bằng straight quote
+        normalized_alias = normalized_alias.replace('\u2019', "'")  # Right single quotation mark
+        normalized_alias = normalized_alias.replace('\u2018', "'")  # Left single quotation mark
+        normalized_alias = normalized_alias.replace('\u201B', "'")  # Single high-reversed-9 quotation mark
+        # Escape tên
+        escaped_name = re.escape(normalized_alias)
+        # Pattern: word boundary trước (hoặc không có ký tự word), tên, word boundary sau (hoặc không có ký tự word)
+        # Sử dụng negative lookbehind/lookahead để tránh match partial words
+        pattern = r"(?<!\w)" + escaped_name + r"(?!\w)"
+        if re.search(pattern, q, re.IGNORECASE):
             return ticker
     
     # Tìm ticker từ pattern (chỉ khi không có từ ignore)
@@ -144,27 +166,58 @@ def extract_date_parts(question: str) -> Dict[str, str]:
 
 def extract_date_range(question: str) -> Tuple[Optional[str], Optional[str]]:
     q = question
+    month_map = {
+        "jan": "01", "january": "01",
+        "feb": "02", "february": "02",
+        "mar": "03", "march": "03",
+        "apr": "04", "april": "04",
+        "may": "05",
+        "jun": "06", "june": "06",
+        "jul": "07", "july": "07",
+        "aug": "08", "august": "08",
+        "sep": "09", "sept": "09", "september": "09",
+        "oct": "10", "october": "10",
+        "nov": "11", "november": "11",
+        "dec": "12", "december": "12",
+    }
+    month_regex = r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+    # Pattern: "Month Day to Month Day, Year"
+    m = re.search(
+        rf"{month_regex}\s+(\d{{1,2}})\s+(?:to|-)\s+{month_regex}\s+(\d{{1,2}}),\s*(\d{{4}})",
+        q,
+        re.IGNORECASE
+    )
+    if m:
+        start_month = month_map[m.group(1).lower()[:3]]
+        start_day = f"{int(m.group(2)):02d}"
+        end_month = month_map[m.group(3).lower()[:3]]
+        end_day = f"{int(m.group(4)):02d}"
+        year = m.group(5)
+        return (
+            f"{year}-{start_month}-{start_day}",
+            f"{year}-{end_month}-{end_day}",
+        )
     patterns = [
         r"(\d{4})-(\d{2})-(\d{2})",
         r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
-        r"(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),\s*(\d{4})",
+        rf"{month_regex}\s+(\d{{1,2}}),\s*(\d{{4}})",
     ]
-    months = {
-        "january": "01", "february": "02", "march": "03", "april": "04",
-        "may": "05", "june": "06", "july": "07", "august": "08",
-        "september": "09", "october": "10", "november": "11", "december": "12",
-    }
     found: List[str] = []
     for pat in patterns:
-        for m in re.finditer(pat, q, re.I):
-            if len(m.groups()) == 3 and pat == patterns[0]:
+        for m in re.finditer(pat, q, re.IGNORECASE):
+            if pat == patterns[0]:
                 found.append(f"{m.group(1)}-{m.group(2)}-{m.group(3)}")
-            elif len(m.groups()) == 3 and pat == patterns[1]:
-                day = f"{int(m.group(1)):02d}"; month = f"{int(m.group(2)):02d}"; year = m.group(3)
+            elif pat == patterns[1]:
+                day = f"{int(m.group(1)):02d}"
+                month = f"{int(m.group(2)):02d}"
+                year = m.group(3)
                 found.append(f"{year}-{month}-{day}")
-            elif len(m.groups()) == 3 and pat == patterns[2]:
-                month = months[m.group(1).lower()]; day = f"{int(m.group(2)):02d}"; year = m.group(3)
-                found.append(f"{year}-{month}-{day}")
+            else:
+                month = month_map.get(m.group(1).lower()[:3])
+                day = f"{int(m.group(2)):02d}"
+                year = m.group(3)
+                if month:
+                    found.append(f"{year}-{month}-{day}")
     if len(found) >= 2:
         return found[0], found[1]
     return None, None
@@ -236,7 +289,7 @@ def extract_month_range(question: str) -> Tuple[Optional[str], Optional[str]]:
     }
     q2 = q.replace("–", "-").replace("—", "-")
     patterns = [
-        r"from\s+([a-z]+)\s+(?:to|through)\s+([a-z]+)",
+        r"from\s+([a-z]+)\s+(?:to|through)\s+([a-z]+)(?:\s+\d{4})?",
         r"\b([a-z]+)\s*-\s*([a-z]+)\b",
         r"thang\s+([0-9]{1,2})\s+(?:den|đến)\s+thang\s+([0-9]{1,2})",
     ]

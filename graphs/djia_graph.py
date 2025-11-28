@@ -65,7 +65,7 @@ def build_djia_graph():
     1. plan_query: Phân tích câu hỏi, xác định độ phức tạp
     2. match_sql_template: Tìm SQL mẫu từ 80+ templates
     3. generate_sql: Sinh SQL bằng Gemini AI (nếu không có mẫu)
-    4. execute_sql: Thực thi SQL trên SQLite database
+    4. execute_sql: Thực thi SQL trên PostgreSQL database
     5. generate_chart: Vẽ biểu đồ (nếu cần)
     6. summarize_answer: Tạo câu trả lời tự nhiên
     
@@ -226,7 +226,7 @@ def run_djia_graph(question: str) -> Dict[str, Any]:
     workflow_steps.append({
         "step": len(workflow_steps) + 1,
         "node": "execute_sql",
-        "description": "Thực thi SQL trên SQLite database",
+        "description": "Thực thi SQL trên PostgreSQL database",
         "status": "completed" if not result.get("error") else "error",
         "result": f"Trả về {len(result.get('df', []))} dòng dữ liệu" if result.get("df") is not None else "Lỗi thực thi"
     })

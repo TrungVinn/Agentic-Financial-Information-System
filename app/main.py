@@ -7,7 +7,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 import json
 import streamlit as st
 import pandas as pd
-import sqlite3
+from sqlalchemy import create_engine, text
 import plotly.io as pio
 
 from graphs.djia_graph import run_djia_graph
@@ -104,9 +104,11 @@ with tab_chat:
                             st.plotly_chart(chart, use_container_width=True)
                         
                         # SQL và bảng
-                        if result.get("sql"):
+                        # Ưu tiên actual_sql (SQL đã bind parameters) thay vì SQL template
+                        sql_to_display = result.get("actual_sql") or result.get("sql")
+                        if sql_to_display:
                             with st.expander("SQL đã chạy"):
-                                st.code(result.get("sql"), language="sql")
+                                st.code(sql_to_display, language="sql")
                         df = result.get("df")
                         if isinstance(df, pd.DataFrame) and not df.empty:
                             with st.expander("Bảng kết quả"):
@@ -138,15 +140,16 @@ with tab_chat:
                         except Exception:
                             chart_json = ""
                         
+                        # Lưu actual_sql (SQL đã bind parameters) thay vì SQL template
+                        sql_to_save = result.get("actual_sql") or result.get("sql", "")
                         st.session_state.messages.append({
                             "role": "assistant",
                             "content": result.get("answer", ""),
-                            "sql": result.get("sql", ""),
+                            "sql": sql_to_save,
                             "used_sample": result.get("used_sample", False),
                             "df_json": df_json,
                             "chart_json": chart_json,
                             "note": note,
-                            "chart_json": chart_json,
                         })
                     except Exception as e:
                         err_msg = f"Lỗi: {e}"
@@ -160,11 +163,12 @@ with tab_sql:
         # Loại dòng comment để hiển thị gọn gàng
         display_sql = "\n".join([line for line in user_sql.splitlines() if not line.strip().startswith("--")]).strip()
         try:
-            # Dùng DB_PATH
-            from config import DB_PATH
-            conn = sqlite3.connect(str(DB_PATH))
-            df = pd.read_sql_query(user_sql, conn)
-            conn.close()
+            # Dùng PostgreSQL connection
+            from config import DB_CONNECTION_STRING
+            engine = create_engine(DB_CONNECTION_STRING)
+            with engine.connect() as conn:
+                df = pd.read_sql_query(text(user_sql), conn)
+            engine.dispose()
             st.success("Chạy thành công")
             st.dataframe(df)
         except Exception as e:
