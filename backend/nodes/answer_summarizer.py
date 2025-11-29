@@ -44,7 +44,19 @@ def _derive_answer_fallback(df: pd.DataFrame) -> str:
         if isinstance(val, date):
             return val.isoformat()
         return str(val)
-    for col in ["close", "open", "high", "low", "volume", "max_close", "min_close", "avg_close", "median_close", "a_close", "b_close"]:
+    for col in [
+        "close",
+        "open",
+        "high",
+        "low",
+        "volume",
+        "max_close",
+        "min_close",
+        "avg_close",
+        "median_close",
+        "a_close",
+        "b_close",
+    ]:
         if col in df.columns:
             val = df[col].iloc[0]
             if isinstance(val, (pd.Timestamp, datetime)):
@@ -68,7 +80,7 @@ def _summarize_with_llm(question: str, df: pd.DataFrame, sql: str = None) -> str
     google_genai.configure(api_key=api_key)
     data_preview = _format_dataframe(df)
     summary_input = json.dumps(data_preview, ensure_ascii=False, indent=2)
-    
+
     system_prompt = (
         "Bạn là trợ lý phân tích tài chính. Hãy đọc câu hỏi và kết quả truy vấn SQL, "
         f"Nếu {question} là tiếng Anh, hãy LUÔN LUÔN trả lời bằng tiếng Anh. Nếu {question} là tiếng Việt, hãy LUÔN LUÔN trả lời bằng tiếng Việt. "
@@ -78,7 +90,7 @@ def _summarize_with_llm(question: str, df: pd.DataFrame, sql: str = None) -> str
         "Khi con số là dương, dùng phrasing 'tăng ...' hoặc 'là ...' tùy ngữ cảnh. "
         "Tránh lặp lại dấu âm trong câu trả lời; hãy diễn đạt theo nghĩa tăng/giảm để người đọc dễ hiểu."
     )
-    
+
     prompt = (
         f"{system_prompt}\n\n"
         f"Câu hỏi: {question}\n"
@@ -87,7 +99,7 @@ def _summarize_with_llm(question: str, df: pd.DataFrame, sql: str = None) -> str
         f"Dữ liệu (tối đa 25 dòng):\n{summary_input}\n\n"
         "Trả lời:"
     )
-    
+
     model = google_genai.GenerativeModel("gemini-2.0-flash")
     response = model.generate_content(prompt)
     answer = (response.text or "").strip()
@@ -101,11 +113,11 @@ def summarize_answer(state: Dict[str, Any]) -> Dict[str, Any]:
     error = state.get("error")
     question = state.get("question", "")
     sql = state.get("sql")
-    
+
     if error:
         answer = f"Không thể thực thi truy vấn do lỗi: {error}"
         return {**state, "answer": answer}
-    
+
     try:
         answer = _summarize_with_llm(question, df, sql)
     except Exception as e:
@@ -116,5 +128,5 @@ def summarize_answer(state: Dict[str, Any]) -> Dict[str, Any]:
             answer = fallback
         else:
             answer = f"{fallback} (LLM fallback: {e})"
-    
+
     return {**state, "answer": answer}

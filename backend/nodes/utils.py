@@ -5,6 +5,7 @@ from config import SQL_SAMPLES_FILE, DJIA_COMPANIES_CSV
 
 COMPANY_ALIASES: Dict[str, str] = {}
 
+
 def _canonicalize_company_name(name: str) -> str:
     name_l = name.lower()
     name_l = name_l.replace("(the)", " ")
@@ -12,6 +13,7 @@ def _canonicalize_company_name(name: str) -> str:
     stop = {"inc", "incorporated", "corporation", "corp", "company", "co", "plc", "the"}
     tokens = [t for t in name_l.split() if t and t not in stop]
     return " ".join(tokens).strip()
+
 
 def load_company_aliases() -> Dict[str, str]:
     aliases: Dict[str, str] = {}
@@ -61,7 +63,7 @@ def load_company_aliases() -> Dict[str, str]:
         "visa": "V",
         "procter & gamble": "PG",
         "merck": "MRK",
-        "travellers": "TRV", 
+        "travellers": "TRV",
         "travelers": "TRV",
         "walmart": "WMT",
         "three m": "MMM",
@@ -73,15 +75,16 @@ def load_company_aliases() -> Dict[str, str]:
 
     return aliases
 
+
 COMPANY_ALIASES = load_company_aliases()
+
 
 def normalize_text(text: str) -> str:
     # Normalize whitespace và lowercase
     normalized = re.sub(r"\s+", " ", text.strip().lower())
     # Normalize dấu nháy đơn: thay tất cả các loại dấu nháy đơn (curly) bằng straight quote
     normalized = (
-        normalized
-        .replace("\u2019", "'")
+        normalized.replace("\u2019", "'")
         .replace("\u2018", "'")
         .replace("\u201B", "'")
         .replace("’", "'")
@@ -92,15 +95,33 @@ def normalize_text(text: str) -> str:
 
 def extract_ticker(question: str) -> Optional[str]:
     q = normalize_text(question)
-    
+
     # Bỏ qua các từ không phải ticker
-    ignore_words = {"djia", "plot", "pie", "bar", "scatter", "heatmap", "chart", "graph"}
+    ignore_words = {
+        "djia",
+        "plot",
+        "pie",
+        "bar",
+        "scatter",
+        "heatmap",
+        "chart",
+        "graph",
+    }
     if any(word in q for word in ignore_words):
         # Nếu có từ "all companies", "each company", "all DJIA" thì không extract ticker
-        if any(phrase in q for phrase in ["all companies", "each company", "all djia", "each djia company", 
-                                          "tất cả công ty", "mỗi công ty"]):
+        if any(
+            phrase in q
+            for phrase in [
+                "all companies",
+                "each company",
+                "all djia",
+                "each djia company",
+                "tất cả công ty",
+                "mỗi công ty",
+            ]
+        ):
             return None
-    
+
     # Tìm ticker từ alias trước (ưu tiên hơn)
     for name, ticker in COMPANY_ALIASES.items():
         # Normalize dấu nháy đơn trong alias để match với câu hỏi đã normalize
@@ -108,9 +129,15 @@ def extract_ticker(question: str) -> Optional[str]:
         # Thay thế tất cả các loại dấu nháy đơn (curly U+2019, straight U+0027) bằng straight quote
         normalized_alias = name
         # Unicode normalize: thay curly quotes bằng straight quote
-        normalized_alias = normalized_alias.replace('\u2019', "'")  # Right single quotation mark
-        normalized_alias = normalized_alias.replace('\u2018', "'")  # Left single quotation mark
-        normalized_alias = normalized_alias.replace('\u201B', "'")  # Single high-reversed-9 quotation mark
+        normalized_alias = normalized_alias.replace(
+            "\u2019", "'"
+        )  # Right single quotation mark
+        normalized_alias = normalized_alias.replace(
+            "\u2018", "'"
+        )  # Left single quotation mark
+        normalized_alias = normalized_alias.replace(
+            "\u201B", "'"
+        )  # Single high-reversed-9 quotation mark
         # Escape tên
         escaped_name = re.escape(normalized_alias)
         # Pattern: word boundary trước (hoặc không có ký tự word), tên, word boundary sau (hoặc không có ký tự word)
@@ -118,7 +145,7 @@ def extract_ticker(question: str) -> Optional[str]:
         pattern = r"(?<!\w)" + escaped_name + r"(?!\w)"
         if re.search(pattern, q, re.IGNORECASE):
             return ticker
-    
+
     # Tìm ticker từ pattern (chỉ khi không có từ ignore)
     m = re.search(r"\b([A-Z]{2,5})\b", question)
     if m:
@@ -126,32 +153,53 @@ def extract_ticker(question: str) -> Optional[str]:
         # Bỏ qua nếu là từ ignore
         if ticker_candidate.lower() not in ignore_words:
             return ticker_candidate
-    
+
     return None
 
 
 def extract_date_parts(question: str) -> Dict[str, str]:
     q = question
     months = {
-        "january": "01", "february": "02", "march": "03", "april": "04",
-        "may": "05", "june": "06", "july": "07", "august": "08",
-        "september": "09", "october": "10", "november": "11", "december": "12",
+        "january": "01",
+        "february": "02",
+        "march": "03",
+        "april": "04",
+        "may": "05",
+        "june": "06",
+        "july": "07",
+        "august": "08",
+        "september": "09",
+        "october": "10",
+        "november": "11",
+        "december": "12",
     }
-    m = re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),\s*(\d{4})", q, re.I)
+    m = re.search(
+        r"(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),\s*(\d{4})",
+        q,
+        re.I,
+    )
     if m:
         month = months[m.group(1).lower()]
         day = f"{int(m.group(2)):02d}"
         year = m.group(3)
         return {"date": f"{year}-{month}-{day}", "year": year, "month": month}
     # Thêm pattern cho "March 2025" (tháng + năm)
-    m = re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})", q, re.I)
+    m = re.search(
+        r"(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})",
+        q,
+        re.I,
+    )
     if m:
         month = months[m.group(1).lower()]
         year = m.group(2)
         return {"year": year, "month": month}
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", q)
     if m:
-        return {"date": f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "year": m.group(1), "month": m.group(2)}
+        return {
+            "date": f"{m.group(1)}-{m.group(2)}-{m.group(3)}",
+            "year": m.group(1),
+            "month": m.group(2),
+        }
     m = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", q)
     if m:
         day = f"{int(m.group(1)):02d}"
@@ -167,25 +215,37 @@ def extract_date_parts(question: str) -> Dict[str, str]:
 def extract_date_range(question: str) -> Tuple[Optional[str], Optional[str]]:
     q = question
     month_map = {
-        "jan": "01", "january": "01",
-        "feb": "02", "february": "02",
-        "mar": "03", "march": "03",
-        "apr": "04", "april": "04",
+        "jan": "01",
+        "january": "01",
+        "feb": "02",
+        "february": "02",
+        "mar": "03",
+        "march": "03",
+        "apr": "04",
+        "april": "04",
         "may": "05",
-        "jun": "06", "june": "06",
-        "jul": "07", "july": "07",
-        "aug": "08", "august": "08",
-        "sep": "09", "sept": "09", "september": "09",
-        "oct": "10", "october": "10",
-        "nov": "11", "november": "11",
-        "dec": "12", "december": "12",
+        "jun": "06",
+        "june": "06",
+        "jul": "07",
+        "july": "07",
+        "aug": "08",
+        "august": "08",
+        "sep": "09",
+        "sept": "09",
+        "september": "09",
+        "oct": "10",
+        "october": "10",
+        "nov": "11",
+        "november": "11",
+        "dec": "12",
+        "december": "12",
     }
     month_regex = r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
     # Pattern: "Month Day to Month Day, Year"
     m = re.search(
         rf"{month_regex}\s+(\d{{1,2}})\s+(?:to|-)\s+{month_regex}\s+(\d{{1,2}}),\s*(\d{{4}})",
         q,
-        re.IGNORECASE
+        re.IGNORECASE,
     )
     if m:
         start_month = month_map[m.group(1).lower()[:3]]
@@ -232,19 +292,39 @@ def extract_quarter(question: str) -> Optional[int]:
     if m:
         return int(m.group(2))
     word_to_num = {
-        "first": 1, "1st": 1, "one": 1,
-        "second": 2, "2nd": 2, "two": 2,
-        "third": 3, "3rd": 3, "three": 3,
-        "fourth": 4, "4th": 4, "four": 4,
-        "thu nhat": 1, "thứ nhất": 1, "dau tien": 1, "đầu tiên": 1,
-        "thu hai": 2, "thứ hai": 2,
-        "thu ba": 3, "thứ ba": 3,
-        "thu tu": 4, "thứ tư": 4,
+        "first": 1,
+        "1st": 1,
+        "one": 1,
+        "second": 2,
+        "2nd": 2,
+        "two": 2,
+        "third": 3,
+        "3rd": 3,
+        "three": 3,
+        "fourth": 4,
+        "4th": 4,
+        "four": 4,
+        "thu nhat": 1,
+        "thứ nhất": 1,
+        "dau tien": 1,
+        "đầu tiên": 1,
+        "thu hai": 2,
+        "thứ hai": 2,
+        "thu ba": 3,
+        "thứ ba": 3,
+        "thu tu": 4,
+        "thứ tư": 4,
     }
-    m = re.search(r"\bquarter\s+(first|second|third|fourth|1st|2nd|3rd|4th|one|two|three|four)\b", q)
+    m = re.search(
+        r"\bquarter\s+(first|second|third|fourth|1st|2nd|3rd|4th|one|two|three|four)\b",
+        q,
+    )
     if m:
         return word_to_num.get(m.group(1), None)
-    m = re.search(r"\b(first|second|third|fourth|1st|2nd|3rd|4th|one|two|three|four)\s+quarter\b", q)
+    m = re.search(
+        r"\b(first|second|third|fourth|1st|2nd|3rd|4th|one|two|three|four)\s+quarter\b",
+        q,
+    )
     if m:
         return word_to_num.get(m.group(1), None)
     m = re.search(r"\bqu(?:ý|y)\s*(i{1,3}|iv)\b", q)
@@ -274,18 +354,41 @@ def extract_quarter(question: str) -> Optional[int]:
 def extract_month_range(question: str) -> Tuple[Optional[str], Optional[str]]:
     q = normalize_text(question)
     month_map = {
-        "jan": "01", "january": "01", "thang 1": "01",
-        "feb": "02", "february": "02", "thang 2": "02",
-        "mar": "03", "march": "03", "thang 3": "03",
-        "apr": "04", "april": "04", "thang 4": "04",
-        "may": "05", "thang 5": "05",
-        "jun": "06", "june": "06", "thang 6": "06",
-        "jul": "07", "july": "07", "thang 7": "07",
-        "aug": "08", "august": "08", "thang 8": "08",
-        "sep": "09", "september": "09", "thang 9": "09",
-        "oct": "10", "october": "10", "thang 10": "10",
-        "nov": "11", "november": "11", "thang 11": "11",
-        "dec": "12", "december": "12", "thang 12": "12",
+        "jan": "01",
+        "january": "01",
+        "thang 1": "01",
+        "feb": "02",
+        "february": "02",
+        "thang 2": "02",
+        "mar": "03",
+        "march": "03",
+        "thang 3": "03",
+        "apr": "04",
+        "april": "04",
+        "thang 4": "04",
+        "may": "05",
+        "thang 5": "05",
+        "jun": "06",
+        "june": "06",
+        "thang 6": "06",
+        "jul": "07",
+        "july": "07",
+        "thang 7": "07",
+        "aug": "08",
+        "august": "08",
+        "thang 8": "08",
+        "sep": "09",
+        "september": "09",
+        "thang 9": "09",
+        "oct": "10",
+        "october": "10",
+        "thang 10": "10",
+        "nov": "11",
+        "november": "11",
+        "thang 11": "11",
+        "dec": "12",
+        "december": "12",
+        "thang 12": "12",
     }
     q2 = q.replace("–", "-").replace("—", "-")
     patterns = [
@@ -310,7 +413,3 @@ def extract_month_range(question: str) -> Tuple[Optional[str], Optional[str]]:
         if a_norm and b_norm:
             return a_norm, b_norm
     return None, None
-
-
-
-

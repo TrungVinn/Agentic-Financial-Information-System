@@ -31,6 +31,7 @@ Thumbs.db
 
 # Database (nếu muốn ignore)
 # db/djia.db
+db.sqlite3
 
 # Logs
 *.log

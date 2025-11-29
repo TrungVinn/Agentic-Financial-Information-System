@@ -37,34 +37,41 @@ Chỉ cần nói "vẽ biểu đồ" hoặc "plot" là có ngay biểu đồ tư
 
 ## Hướng Dẫn Cài Đặt 
 
+### Yêu Cầu Hệ Thống
+- **Python 3.11+**: [Tải Python](https://www.python.org/downloads/)
+- **Node.js 18+**: [Tải Node.js](https://nodejs.org/)
+- **PostgreSQL 14+**: [Tải PostgreSQL](https://www.postgresql.org/download/)
+- **npm hoặc yarn**: Đi kèm với Node.js
+
 ### Bước 1: Tải Code
 ```bash
 # Clone repository
 git clone https://github.com/TrungVinn/Agentic-Financial-Information-System.git
+cd Agentic-Financial-Information-System
 # Hoặc tải file ZIP và giải nén
 ```
 
-### Bước 2: Cài Đặt Python Environment
+### Bước 2: Cài Đặt Backend (Django)
+
+1. **Tạo và kích hoạt virtual environment:**
 ```bash
 # Tạo virtual environment
 python -m venv .venv
 
 # Kích hoạt virtual environment
+# Windows:
 .venv\Scripts\Activate
+# Linux/Mac:
+source .venv/bin/activate
+```
 
-# Cài đặt thư viện
+2. **Cài đặt thư viện Python:**
+```bash
 pip install -r requirements.txt
 ```
 
-### Bước 3: Cấu Hình API Key
+3. **Cấu hình API Key và Database:**
 
-1. **Lấy API Key miễn phí:**
-   - Truy cập: https://aistudio.google.com/app/apikey
-   - Đăng nhập bằng tài khoản Google
-   - Nhấn "Create API Key" và copy key
-
-2. **Tạo file `.env`:**
-   
    Tạo file `.env` trong thư mục gốc của project:
 
    ```env
@@ -80,48 +87,95 @@ pip install -r requirements.txt
    POSTGRES_PASSWORD=your_password_here
    ```
 
-### Bước 4: Khởi Tạo Database
-1. Cài đặt PostgreSQL
-- Tải và cài đặt từ: https://www.postgresql.org/download/windows/
+   **Lấy API Key miễn phí:**
+   - Truy cập: https://aistudio.google.com/app/apikey
+   - Đăng nhập bằng tài khoản Google
+   - Nhấn "Create API Key" và copy key vào file `.env`
 
-2. Tạo Database
-```sql
--- Kết nối PostgreSQL
-psql -U postgres
--- Tạo database
-CREATE DATABASE djia;
-\q
-```
+4. **Khởi tạo Database:**
 
+   a. **Cài đặt PostgreSQL** (nếu chưa có):
+   - Tải và cài đặt từ: https://www.postgresql.org/download/
+
+   b. **Tạo Database:**
+   ```sql
+   -- Kết nối PostgreSQL
+   psql -U postgres
+   -- Tạo database
+   CREATE DATABASE djia;
+   \q
+   ```
+
+   c. **Import dữ liệu:**
+   ```bash
+   # Đảm bảo đã kích hoạt virtual environment
+   python db/init_db.py
+   ```
+
+   Script này sẽ:
+   - Tạo bảng `companies` và `prices`
+   - Import dữ liệu từ CSV files
+   - Tạo indexes để tăng tốc độ truy vấn
+
+   **Kết quả mong đợi:**
+   ```
+   Đang import dữ liệu companies...
+   Đã import 30 records vào bảng companies
+   Đang import dữ liệu prices...
+   Đã import 15060 records vào bảng prices
+   Database đã được tạo thành công!
+   Các bảng trong database: ['companies', 'prices']
+   Số lượng companies: 30
+   Số lượng prices: 15060
+   ```
+
+5. **Chạy migrations Django:**
 ```bash
-python db/init_db.py
+# Di chuyển vào thư mục backend
+cd backend
+
+# Chạy migrations để tạo bảng cho chat history
+python manage.py migrate
+
+# Tạo superuser (tùy chọn, để truy cập Django admin)
+python manage.py createsuperuser
 ```
 
-Script này sẽ:
-- Tạo bảng `companies` và `prices`
-- Import dữ liệu từ CSV files
-- Tạo indexes để tăng tốc độ truy vấn
+### Bước 3: Cài Đặt Frontend (Vite + React)
 
-
-**Kết quả mong đợi:**
-```
-Đang import dữ liệu companies...
-Đã import 30 records vào bảng companies
-Đang import dữ liệu prices...
-Đã import 15060 records vào bảng prices
-Database đã được tạo thành công!
-Các bảng trong database: ['companies', 'prices']
-Số lượng companies: 30
-Số lượng prices: 15060
-```
-
-### Bước 5: Chạy Ứng Dụng
+1. **Cài đặt dependencies:**
 ```bash
-# Khởi động Streamlit
-streamlit run app/main.py
+# Di chuyển vào thư mục frontend
+cd frontend
+
+# Cài đặt npm packages
+npm install
 ```
 
-**Ứng dụng sẽ tự động mở tại:** http://localhost:8501
+### Bước 4: Chạy Ứng Dụng
+
+**Cần chạy cả Backend và Frontend:**
+
+1. **Terminal 1 - Chạy Django Backend:**
+```bash
+# Đảm bảo đã kích hoạt virtual environment
+cd backend
+python manage.py runserver
+```
+
+Backend sẽ chạy tại: **http://localhost:8000**
+
+2. **Terminal 2 - Chạy Vite Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+Frontend sẽ chạy tại: **http://localhost:5173**
+
+3. **Mở trình duyệt:**
+   - Truy cập: **http://localhost:5173**
+   - Frontend sẽ tự động kết nối với backend qua proxy
 
 ---
 
@@ -129,25 +183,48 @@ streamlit run app/main.py
 
 ### Bắt Đầu Nhanh
 
-1. **Mở trình duyệt** tại http://localhost:8501
-2. **Nhập câu hỏi** vào ô chat ở cuối trang
-3. **Nhận câu trả lời** ngay lập tức với:
+1. **Đảm bảo cả Backend và Frontend đang chạy:**
+   - Backend: http://localhost:8000
+   - Frontend: http://localhost:5173
+
+2. **Mở trình duyệt** tại http://localhost:5173
+
+3. **Sử dụng ứng dụng:**
+   - **Chưa đăng nhập**: Có thể chat ngay, lịch sử lưu cục bộ (localStorage)
+   - **Đăng nhập/Đăng ký**: Click nút "Đăng nhập / Đăng ký" ở góc phải trên
+     - Đăng ký tài khoản mới hoặc đăng nhập
+     - Lịch sử chat sẽ được lưu trên server và đồng bộ giữa các thiết bị
+
+4. **Nhập câu hỏi** vào ô chat ở cuối trang
+
+5. **Nhận câu trả lời** ngay lập tức với:
    - Câu trả lời ngắn gọn
+   - SQL đã chạy (có thể đóng/mở)
+   - Bảng dữ liệu chi tiết (có thể đóng/mở)
    - Biểu đồ (nếu yêu cầu)
-   - SQL đã chạy (trong expander)
-   - Bảng dữ liệu chi tiết
 
-### Các Tab Trong Ứng Dụng
+### Tính Năng Chính
 
-#### Tab 1: Chat (Hỏi Đáp)
-- Nhập câu hỏi tự nhiên
-- Xem câu trả lời ngay lập tức
-- Lịch sử hội thoại được lưu
+#### Chat Interface
+- **Giao diện**: Dark theme, sidebar lịch sử, chat căn giữa
+- **Lịch sử hội thoại**: 
+  - Sidebar bên trái hiển thị tất cả các phiên chat
+  - Click vào phiên chat để xem lại lịch sử
+  - Có thể xóa phiên chat
+- **Đóng/Mở sections**: Click vào "SQL đã chạy" hoặc "Bảng dữ liệu" để đóng/mở
 
-#### Tab 2: SQL Runner (Nâng Cao)
-- Chạy SQL trực tiếp nếu bạn biết SQL
-- Xem cấu trúc database
-- Thử nghiệm các query phức tạp
+#### Hệ Thống Tài Khoản
+- **Đăng ký/Đăng nhập**: Lưu lịch sử chat trên server
+- **Đồng bộ**: Lịch sử được đồng bộ giữa các thiết bị khi đăng nhập
+- **Local storage**: Nếu chưa đăng nhập, lịch sử lưu cục bộ trên trình duyệt
+
+#### Django Admin (Tùy chọn)
+- Truy cập: http://localhost:8000/admin
+- Đăng nhập bằng superuser đã tạo
+- Xem và quản lý:
+  - Conversations (phiên chat)
+  - Messages (tin nhắn)
+  - Users (người dùng)
 
 ---
 
@@ -176,3 +253,34 @@ Apple (AAPL), Microsoft (MSFT), Boeing (BA), Coca-Cola (KO), Disney (DIS), Goldm
 **Khoảng thời gian:** Dữ liệu lịch sử từ 2020 đến 2025
 
 ---
+
+## Cấu Trúc Project
+
+```
+Agentic-Financial-Information-System/
+├── backend/                 # Django Backend
+│   ├── api/                # Django REST API app
+│   │   ├── models.py       # Conversation, Message models
+│   │   ├── views.py        # API endpoints
+│   │   └── urls.py         # URL routing
+│   ├── core/               # Django project settings
+│   │   ├── settings.py      # Django configuration
+│   │   └── urls.py         # Main URL routing
+│   ├── graphs/             # LangGraph multi-agent system
+│   ├── nodes/              # Agent nodes
+│   ├── db/                 # Database initialization
+│   ├── manage.py           # Django management script
+│   └── config.py           # Database configuration
+│
+├── frontend/               # Vite + React Frontend
+│   ├── src/
+│   │   ├── App.tsx         # Main React component
+│   │   ├── App.css         # Styles
+│   │   └── main.tsx        # Entry point
+│   ├── vite.config.ts      # Vite configuration
+│   └── package.json        # npm dependencies
+│
+├── .env                    # Environment variables (tạo file này)
+├── requirements.txt        # Python dependencies
+└── README.md              # File này
+```

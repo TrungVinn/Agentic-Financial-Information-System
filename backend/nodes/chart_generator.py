@@ -13,7 +13,12 @@ from dotenv import load_dotenv
 from google import generativeai as google_genai
 
 from config import DB_CONNECTION_STRING
-from nodes.utils import extract_ticker, extract_date_range, extract_date_parts, normalize_text
+from nodes.utils import (
+    extract_ticker,
+    extract_date_range,
+    extract_date_parts,
+    normalize_text,
+)
 
 load_dotenv()
 if os.getenv("GOOGLE_API_KEY") in (None, "") and os.getenv("GEMINI_API_KEY"):
@@ -37,14 +42,14 @@ def _prepare_data_preview(df: pd.DataFrame, max_rows: int = 60) -> List[Dict[str
         if pd.api.types.is_datetime64_any_dtype(preview[col]):
             preview[col] = preview[col].dt.strftime("%Y-%m-%d")
         # Convert các giá trị Timestamp lẻ (nếu có)
-        elif preview[col].dtype == 'object':
+        elif preview[col].dtype == "object":
             # Kiểm tra nếu có Timestamp objects
             preview[col] = preview[col].apply(
                 lambda x: x.strftime("%Y-%m-%d") if isinstance(x, pd.Timestamp) else x
             )
         # Convert NaN/None thành None (JSON serializable)
         preview[col] = preview[col].where(pd.notna(preview[col]), None)
-    
+
     # Convert sang dict và xử lý các giá trị không serializable
     records = preview.to_dict(orient="records")
     # Đảm bảo tất cả giá trị đều JSON serializable
@@ -55,7 +60,9 @@ def _prepare_data_preview(df: pd.DataFrame, max_rows: int = 60) -> List[Dict[str
             elif pd.isna(value):
                 record[key] = None
             elif isinstance(value, (np.integer, np.floating)):
-                record[key] = float(value) if isinstance(value, np.floating) else int(value)
+                record[key] = (
+                    float(value) if isinstance(value, np.floating) else int(value)
+                )
     return records
 
 
@@ -72,12 +79,12 @@ def build_chart_sql(
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return None
-    
+
     google_genai.configure(api_key=api_key)
     required_cols = ", ".join(_required_columns_for_chart(chart_type))
     chart_request_json = json.dumps(chart_request or {}, ensure_ascii=False)
     ticker_hint = ticker or "unknown"
-    
+
     # Schema
     schema = (
         "=== DATASET SCHEMA ===\n"
@@ -89,7 +96,7 @@ def build_chart_sql(
         "  Note: companies.symbol is the primary key\n\n"
         "⚠️ KHÔNG tồn tại bảng 'stock_prices'. CHỈ dùng 'prices' và 'companies'.\n\n"
     )
-    
+
     # Constraints
     constraints = (
         "=== QUY TẮC QUAN TRỌNG CHO VISUALIZATION ===\n"
@@ -110,7 +117,7 @@ def build_chart_sql(
         "   → GROUP BY category đó (sector, industry...)\n\n"
         "6. Không được include columns không trong GROUP BY trừ khi chúng được aggregate.\n\n"
     )
-    
+
     # Examples
     examples = (
         "=== VÍ DỤ ĐÚNG (Few-shot Examples) ===\n\n"
@@ -125,12 +132,12 @@ def build_chart_sql(
         "❌ SAI: GROUP BY date khi câu hỏi về 'per company'\n"
         "❌ SAI: Không GROUP BY khi cần aggregate per company\n\n"
     )
-    
+
     system_prompt = (
         "Bạn là trợ lý SQL cho PostgreSQL nhằm chuẩn bị dữ liệu vẽ biểu đồ tài chính.\n"
         "Luôn trả về một câu SELECT thuần, không markdown, không comment, không giải thích.\n"
     )
-    
+
     guidance = (
         "=== QUY TẮC CHUNG ===\n"
         "- CHỈ sử dụng bảng prices và companies.\n"
@@ -146,7 +153,7 @@ def build_chart_sql(
         "- Không được tạo bảng mới hay sử dụng tên bảng khác.\n"
         "- Không dùng comment hoặc nhiều câu SQL.\n"
     )
-    
+
     prompt = (
         f"{system_prompt}\n\n"
         f"{schema}\n"
@@ -161,12 +168,12 @@ def build_chart_sql(
         f"Cần tối thiểu các cột: {required_cols}\n\n"
         f"SQL:"
     )
-    
+
     try:
         model = google_genai.GenerativeModel("gemini-2.0-flash")
         resp = model.generate_content(prompt)
         sql = (resp.text or "").strip()
-        
+
         if sql.startswith("```"):
             lines = sql.split("\n")
             if lines[0].startswith("```"):
@@ -174,10 +181,10 @@ def build_chart_sql(
             if lines and lines[-1].strip() == "```":
                 lines = lines[:-1]
             sql = "\n".join(lines).strip()
-        
+
         if sql and not sql.endswith(";"):
             sql += ";"
-        
+
         return sql or None
     except Exception as e:
         print(f"Error generating chart SQL with LLM: {e}")
@@ -196,12 +203,12 @@ def build_chart_code(
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key or df is None or df.empty:
         return None
-    
+
     google_genai.configure(api_key=api_key)
     preview = _prepare_data_preview(df)
     columns = ", ".join(df.columns.tolist())
     chart_request_json = json.dumps(chart_request or {}, ensure_ascii=False)
-    
+
     # Tạo data_json với error handling
     try:
         data_json = json.dumps(preview, ensure_ascii=False, default=str)
@@ -220,12 +227,12 @@ def build_chart_code(
                     safe_record[key] = str(value) if value is not None else None
             safe_preview.append(safe_record)
         data_json = json.dumps(safe_preview, ensure_ascii=False)
-    
+
     system_prompt = (
         "Bạn là trợ lý dựng biểu đồ Plotly bằng Python. "
         "Hãy đọc câu hỏi và dữ liệu mẫu, sau đó sinh code Python (không markdown) tạo đối tượng Plotly Figure."
     )
-    
+
     # Constraints cho visualization
     constraints = (
         "=== QUY TẮC QUAN TRỌNG ===\n"
@@ -258,7 +265,7 @@ def build_chart_code(
         "7. Code phải gán kết quả vào biến 'figure' (go.Figure).\n"
         "8. Không in/log, không markdown, không tiền tố 'python'.\n\n"
     )
-    
+
     # Few-shot examples
     examples = (
         "=== VÍ DỤ ĐÚNG (Few-shot Examples) ===\n\n"
@@ -346,7 +353,7 @@ def build_chart_code(
         "❌ SAI: Hard-code dữ liệu thay vì dùng df\n"
         "❌ SAI: Dùng mode='markers' thay vì mode='lines' cho time series\n\n"
     )
-    
+
     guidance = (
         "=== YÊU CẦU KỸ THUẬT ===\n"
         "- DataFrame có tên là df (pandas DataFrame). Có thể sử dụng: pd, np, go, px, make_subplots.\n"
@@ -365,7 +372,7 @@ def build_chart_code(
         "- Với pie/bar chart về sector: nếu df có cột 'sector' và một cột metric (market_cap, count...), dùng trực tiếp các cột đó.\n"
         "- Với time series: cột 'date' đã là datetime, dùng trực tiếp df['date'] và df['close'] (hoặc open/high/low).\n"
     )
-    
+
     prompt = (
         f"{system_prompt}\n\n"
         f"{constraints}\n"
@@ -379,7 +386,7 @@ def build_chart_code(
         f"Dữ liệu mẫu (JSON, {len(preview)} dòng đầu):\n{data_json}\n\n"
         f"Hãy sinh code Python để tạo biểu đồ Plotly phù hợp với câu hỏi và dữ liệu trên."
     )
-    
+
     try:
         model = google_genai.GenerativeModel("gemini-2.0-flash")
         resp = model.generate_content(prompt)
@@ -393,13 +400,15 @@ def build_chart_code(
         return None
 
 
-def render_chart_from_code(code: Optional[str], df: pd.DataFrame) -> Optional[go.Figure]:
+def render_chart_from_code(
+    code: Optional[str], df: pd.DataFrame
+) -> Optional[go.Figure]:
     if not code:
         return None
     code = code.strip()
     if code.lower().startswith("python"):
         newline_idx = code.find("\n")
-        code = code[newline_idx + 1:] if newline_idx != -1 else ""
+        code = code[newline_idx + 1 :] if newline_idx != -1 else ""
     local_env: Dict[str, Any] = {
         "pd": pd,
         "np": np,
@@ -413,11 +422,11 @@ def render_chart_from_code(code: Optional[str], df: pd.DataFrame) -> Optional[go
     except Exception as e:
         print(f"Error executing chart code: {e}\nCode:\n{code}")
         return None
-    
+
     figure = local_env.get("figure")
     if isinstance(figure, go.Figure):
         return figure
-    
+
     build_fn = local_env.get("build_chart")
     if callable(build_fn):
         try:
@@ -426,11 +435,11 @@ def render_chart_from_code(code: Optional[str], df: pd.DataFrame) -> Optional[go
                 return figure
         except Exception as e:
             print(f"Error calling build_chart(): {e}")
-    
+
     for value in local_env.values():
         if isinstance(value, go.Figure):
             return value
-    
+
     print("LLM code did not produce a Plotly Figure.")
     return None
 
@@ -439,204 +448,223 @@ def create_line_chart(df: pd.DataFrame, ticker: str, title: str = None) -> go.Fi
     """Tạo biểu đồ đường cho giá cổ phiếu."""
     if df.empty:
         return None
-    
+
     fig = go.Figure()
-    
+
     # Thêm đường giá đóng cửa
-    fig.add_trace(go.Scatter(
-        x=df['date'],
-        y=df['close'],
-        mode='lines',
-        name='Close Price',
-        line=dict(color='#2E86AB', width=2),
-        hovertemplate='Date: %{x}<br>Close: $%{y:.2f}<extra></extra>'
-    ))
-    
-    # Thêm moving average 20 ngày nếu có đủ dữ liệu
-    if len(df) >= 20:
-        df['ma20'] = df['close'].rolling(window=20).mean()
-        fig.add_trace(go.Scatter(
-            x=df['date'],
-            y=df['ma20'],
-            mode='lines',
-            name='MA 20',
-            line=dict(color='#F77F00', width=1, dash='dash'),
-            hovertemplate='Date: %{x}<br>MA20: $%{y:.2f}<extra></extra>'
-        ))
-    
-    fig.update_layout(
-        title=title or f'{ticker} - Biểu đồ giá',
-        xaxis_title='Ngày',
-        yaxis_title='Giá ($)',
-        hovermode='x unified',
-        template='plotly_white',
-        height=500,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
+    fig.add_trace(
+        go.Scatter(
+            x=df["date"],
+            y=df["close"],
+            mode="lines",
+            name="Close Price",
+            line=dict(color="#2E86AB", width=2),
+            hovertemplate="Date: %{x}<br>Close: $%{y:.2f}<extra></extra>",
         )
     )
-    
+
+    # Thêm moving average 20 ngày nếu có đủ dữ liệu
+    if len(df) >= 20:
+        df["ma20"] = df["close"].rolling(window=20).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df["ma20"],
+                mode="lines",
+                name="MA 20",
+                line=dict(color="#F77F00", width=1, dash="dash"),
+                hovertemplate="Date: %{x}<br>MA20: $%{y:.2f}<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        title=title or f"{ticker} - Biểu đồ giá",
+        xaxis_title="Ngày",
+        yaxis_title="Giá ($)",
+        hovermode="x unified",
+        template="plotly_white",
+        height=500,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+
     return fig
 
 
-def create_candlestick_chart(df: pd.DataFrame, ticker: str, title: str = None) -> go.Figure:
+def create_candlestick_chart(
+    df: pd.DataFrame, ticker: str, title: str = None
+) -> go.Figure:
     """Tạo biểu đồ nến cho giá cổ phiếu."""
-    if df.empty or not all(col in df.columns for col in ['open', 'high', 'low', 'close']):
+    if df.empty or not all(
+        col in df.columns for col in ["open", "high", "low", "close"]
+    ):
         return None
-    
+
     # Create figure with secondary y-axis
     fig = make_subplots(
-        rows=2, cols=1,
+        rows=2,
+        cols=1,
         shared_xaxes=True,
         vertical_spacing=0.03,
         row_heights=[0.7, 0.3],
-        subplot_titles=(title or f'{ticker} - Biểu đồ nến', 'Khối lượng giao dịch')
+        subplot_titles=(title or f"{ticker} - Biểu đồ nến", "Khối lượng giao dịch"),
     )
-    
+
     # Candlestick chart
-    fig.add_trace(go.Candlestick(
-        x=df['date'],
-        open=df['open'],
-        high=df['high'],
-        low=df['low'],
-        close=df['close'],
-        name='Price',
-        increasing_line_color='#26A69A',
-        decreasing_line_color='#EF5350'
-    ), row=1, col=1)
-    
+    fig.add_trace(
+        go.Candlestick(
+            x=df["date"],
+            open=df["open"],
+            high=df["high"],
+            low=df["low"],
+            close=df["close"],
+            name="Price",
+            increasing_line_color="#26A69A",
+            decreasing_line_color="#EF5350",
+        ),
+        row=1,
+        col=1,
+    )
+
     # Volume bar chart
-    colors = ['#26A69A' if close >= open else '#EF5350' 
-              for close, open in zip(df['close'], df['open'])]
-    
-    fig.add_trace(go.Bar(
-        x=df['date'],
-        y=df['volume'],
-        name='Volume',
-        marker_color=colors,
-        showlegend=False
-    ), row=2, col=1)
-    
+    colors = [
+        "#26A69A" if close >= open else "#EF5350"
+        for close, open in zip(df["close"], df["open"])
+    ]
+
+    fig.add_trace(
+        go.Bar(
+            x=df["date"],
+            y=df["volume"],
+            name="Volume",
+            marker_color=colors,
+            showlegend=False,
+        ),
+        row=2,
+        col=1,
+    )
+
     fig.update_layout(
         xaxis_rangeslider_visible=False,
-        template='plotly_white',
+        template="plotly_white",
         height=700,
         showlegend=True,
-        hovermode='x unified'
+        hovermode="x unified",
     )
-    
+
     fig.update_xaxes(title_text="Ngày", row=2, col=1)
     fig.update_yaxes(title_text="Giá ($)", row=1, col=1)
     fig.update_yaxes(title_text="Khối lượng", row=2, col=1)
-    
+
     return fig
 
 
-def create_comparison_chart(df: pd.DataFrame, tickers: list, title: str = None) -> go.Figure:
+def create_comparison_chart(
+    df: pd.DataFrame, tickers: list, title: str = None
+) -> go.Figure:
     """Tạo biểu đồ so sánh nhiều cổ phiếu."""
-    if df.empty or 'ticker' not in df.columns:
+    if df.empty or "ticker" not in df.columns:
         return None
-    
+
     fig = go.Figure()
-    
-    colors = ['#2E86AB', '#F77F00', '#06A77D', '#D62828', '#F4A259', '#4059AD']
-    
+
+    colors = ["#2E86AB", "#F77F00", "#06A77D", "#D62828", "#F4A259", "#4059AD"]
+
     for i, ticker in enumerate(tickers):
-        ticker_df = df[df['ticker'] == ticker].copy()
+        ticker_df = df[df["ticker"] == ticker].copy()
         if not ticker_df.empty:
             # Normalize to percentage change from first value
-            first_close = ticker_df['close'].iloc[0]
-            ticker_df['pct_change'] = ((ticker_df['close'] - first_close) / first_close) * 100
-            
-            fig.add_trace(go.Scatter(
-                x=ticker_df['date'],
-                y=ticker_df['pct_change'],
-                mode='lines',
-                name=ticker,
-                line=dict(color=colors[i % len(colors)], width=2),
-                hovertemplate=f'{ticker}<br>Date: %{{x}}<br>Change: %{{y:.2f}}%<extra></extra>'
-            ))
-    
+            first_close = ticker_df["close"].iloc[0]
+            ticker_df["pct_change"] = (
+                (ticker_df["close"] - first_close) / first_close
+            ) * 100
+
+            fig.add_trace(
+                go.Scatter(
+                    x=ticker_df["date"],
+                    y=ticker_df["pct_change"],
+                    mode="lines",
+                    name=ticker,
+                    line=dict(color=colors[i % len(colors)], width=2),
+                    hovertemplate=f"{ticker}<br>Date: %{{x}}<br>Change: %{{y:.2f}}%<extra></extra>",
+                )
+            )
+
     fig.update_layout(
-        title=title or 'So sánh biến động giá (%)',
-        xaxis_title='Ngày',
-        yaxis_title='Thay đổi (%)',
-        hovermode='x unified',
-        template='plotly_white',
+        title=title or "So sánh biến động giá (%)",
+        xaxis_title="Ngày",
+        yaxis_title="Thay đổi (%)",
+        hovermode="x unified",
+        template="plotly_white",
         height=500,
         showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
-    
+
     # Add zero line
     fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
-    
+
     return fig
 
 
 def create_volume_chart(df: pd.DataFrame, ticker: str, title: str = None) -> go.Figure:
     """Tạo biểu đồ khối lượng giao dịch."""
-    if df.empty or 'volume' not in df.columns:
+    if df.empty or "volume" not in df.columns:
         return None
-    
+
     fig = go.Figure()
-    
-    colors = ['#26A69A' if close >= open else '#EF5350' 
-              for close, open in zip(df['close'], df['open'])]
-    
-    fig.add_trace(go.Bar(
-        x=df['date'],
-        y=df['volume'],
-        name='Volume',
-        marker_color=colors,
-        hovertemplate='Date: %{x}<br>Volume: %{y:,.0f}<extra></extra>'
-    ))
-    
+
+    colors = [
+        "#26A69A" if close >= open else "#EF5350"
+        for close, open in zip(df["close"], df["open"])
+    ]
+
+    fig.add_trace(
+        go.Bar(
+            x=df["date"],
+            y=df["volume"],
+            name="Volume",
+            marker_color=colors,
+            hovertemplate="Date: %{x}<br>Volume: %{y:,.0f}<extra></extra>",
+        )
+    )
+
     # Add moving average of volume
     if len(df) >= 20:
-        df['vol_ma20'] = df['volume'].rolling(window=20).mean()
-        fig.add_trace(go.Scatter(
-            x=df['date'],
-            y=df['vol_ma20'],
-            mode='lines',
-            name='Volume MA 20',
-            line=dict(color='#F77F00', width=2),
-            hovertemplate='Date: %{x}<br>Vol MA20: %{y:,.0f}<extra></extra>'
-        ))
-    
+        df["vol_ma20"] = df["volume"].rolling(window=20).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df["vol_ma20"],
+                mode="lines",
+                name="Volume MA 20",
+                line=dict(color="#F77F00", width=2),
+                hovertemplate="Date: %{x}<br>Vol MA20: %{y:,.0f}<extra></extra>",
+            )
+        )
+
     fig.update_layout(
-        title=title or f'{ticker} - Khối lượng giao dịch',
-        xaxis_title='Ngày',
-        yaxis_title='Khối lượng',
-        hovermode='x unified',
-        template='plotly_white',
+        title=title or f"{ticker} - Khối lượng giao dịch",
+        xaxis_title="Ngày",
+        yaxis_title="Khối lượng",
+        hovermode="x unified",
+        template="plotly_white",
         height=400,
-        showlegend=True
+        showlegend=True,
     )
-    
+
     return fig
 
 
 def fetch_chart_data(question: str, ticker: str, chart_type: str) -> pd.DataFrame:
     """Lấy dữ liệu từ database để vẽ biểu đồ."""
     engine = create_engine(DB_CONNECTION_STRING)
-    
+
     try:
         # Xác định khoảng thời gian
         start_date, end_date = extract_date_range(question)
         date_parts = extract_date_parts(question)
-        
+
         # Xây dựng SQL query (PostgreSQL syntax)
         if chart_type == "comparison":
             # So sánh nhiều công ty - cần tìm tất cả tickers trong câu hỏi
@@ -650,37 +678,42 @@ def fetch_chart_data(question: str, ticker: str, chart_type: str) -> pd.DataFram
         else:
             # Single ticker
             where_clauses = [f"ticker = '{ticker}'"]
-            
+
             if start_date and end_date:
-                where_clauses.append(f"date BETWEEN '{start_date}'::date AND '{end_date}'::date")
-            elif 'year' in date_parts:
+                where_clauses.append(
+                    f"date BETWEEN '{start_date}'::date AND '{end_date}'::date"
+                )
+            elif "year" in date_parts:
                 where_clauses.append(f"EXTRACT(YEAR FROM date) = {date_parts['year']}")
-            elif 'month' in date_parts and 'year' in date_parts:
-                where_clauses.append(f"EXTRACT(YEAR FROM date) = {date_parts['year']} AND EXTRACT(MONTH FROM date) = {date_parts['month']}")
+            elif "month" in date_parts and "year" in date_parts:
+                where_clauses.append(
+                    f"EXTRACT(YEAR FROM date) = {date_parts['year']} AND EXTRACT(MONTH FROM date) = {date_parts['month']}"
+                )
             else:
                 # Default: last 3 months
                 where_clauses.append("date >= CURRENT_DATE - INTERVAL '3 months'")
-            
+
             where_clause = " AND ".join(where_clauses)
-            
+
             sql = f"""
                 SELECT date, open, high, low, close, volume
                 FROM prices
                 WHERE {where_clause}
                 ORDER BY date ASC
             """
-        
+
         with engine.connect() as conn:
             df = pd.read_sql_query(text(sql), conn)
-        
+
         # Convert date to datetime (PostgreSQL trả về date object)
-        if not df.empty and 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'])
-        
+        if not df.empty and "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+
         return df
     except Exception as e:
         print(f"Error fetching chart data: {e}")
         import traceback
+
         traceback.print_exc()
         return pd.DataFrame()
     finally:
@@ -695,44 +728,70 @@ def generate_chart(state: Dict[str, Any]) -> Dict[str, Any]:
     chart_type = state.get("chart_type", "line")
     chart_request = state.get("chart_request")
     df = state.get("df")
-    
+
     if not needs_chart:
         return {**state, "chart": None}
-    
+
     # Kiểm tra nếu câu hỏi về tất cả DJIA companies, top N companies, hoặc sector/industry
     q = normalize_text(question)
-    is_all_companies = any(phrase in q for phrase in [
-        "all companies", "all djia", "each company", "each djia company",
-        "tất cả công ty", "mỗi công ty", "for all djia", "for each djia",
-        "top ", "top companies", "top 10", "top 5", "top 20",  # Top N companies
-        "largest companies", "biggest companies", "highest companies"
-    ])
-    is_sector_query = any(word in q for word in ["sector", "industry", "ngành", "lĩnh vực"])
-    
+    is_all_companies = any(
+        phrase in q
+        for phrase in [
+            "all companies",
+            "all djia",
+            "each company",
+            "each djia company",
+            "tất cả công ty",
+            "mỗi công ty",
+            "for all djia",
+            "for each djia",
+            "top ",
+            "top companies",
+            "top 10",
+            "top 5",
+            "top 20",  # Top N companies
+            "largest companies",
+            "biggest companies",
+            "highest companies",
+        ]
+    )
+    is_sector_query = any(
+        word in q for word in ["sector", "industry", "ngành", "lĩnh vực"]
+    )
+
     # Nếu không có ticker, thử trích xuất (trừ khi là all companies hoặc sector query)
     if not ticker and not is_all_companies and not is_sector_query:
         ticker = extract_ticker(question)
-    
+
     # Nếu vẫn không có ticker và không phải all companies/sector, không vẽ được
-    if not ticker and chart_type != "comparison" and not is_all_companies and not is_sector_query:
-        return {**state, "chart": None, "chart_error": "Không xác định được mã cổ phiếu"}
-    
+    if (
+        not ticker
+        and chart_type != "comparison"
+        and not is_all_companies
+        and not is_sector_query
+    ):
+        return {
+            **state,
+            "chart": None,
+            "chart_error": "Không xác định được mã cổ phiếu",
+        }
+
     # Nếu đã có df từ SQL execution, dùng luôn (không fetch lại)
     # Với all companies hoặc sector query, SQL đã trả về đúng dữ liệu
     if not is_all_companies and not is_sector_query:
-        if df is None or df.empty or 'date' not in df.columns:
+        if df is None or df.empty or "date" not in df.columns:
             df = fetch_chart_data(question, ticker, chart_type)
-    
+
     if df is None or df.empty:
         return {**state, "chart": None, "chart_error": "Không có dữ liệu để vẽ biểu đồ"}
-    
+
     # Normalize column names to lowercase để tránh vấn đề case sensitivity
     df.columns = [col.lower() for col in df.columns]
-    
+
     # Ensure date column is datetime (nếu có)
-    if 'date' in df.columns and not pd.api.types.is_datetime64_any_dtype(df['date']):
-        df['date'] = pd.to_datetime(df['date'])
-    
+    if "date" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["date"]):
+        df["date"] = pd.to_datetime(df["date"])
+
     chart = None
     error_msg = None
     try:
@@ -746,12 +805,13 @@ def generate_chart(state: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         error_msg = f"Lỗi khi sinh/thực thi code biểu đồ: {str(e)}"
         print(f"Error generating chart code via LLM: {e}")
-    
+
     if chart is None:
         return {
             **state,
             "chart": None,
-            "chart_error": error_msg or "Không thể tạo biểu đồ từ mô tả của bạn. Hãy cụ thể hơn hoặc thử lại."
+            "chart_error": error_msg
+            or "Không thể tạo biểu đồ từ mô tả của bạn. Hãy cụ thể hơn hoặc thử lại.",
         }
-    
+
     return {**state, "chart": chart, "chart_error": None}

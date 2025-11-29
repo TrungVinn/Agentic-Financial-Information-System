@@ -33,10 +33,12 @@ def _build_hint_text(analysis_hint: Optional[str]) -> str:
     return f"\nYÊU CẦU NÂNG CAO: Hãy dùng CTE và các phép tính cần thiết để xử lý loại câu hỏi '{analysis_hint}'."
 
 
-def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysis_hint: Optional[str] = None) -> str:
+def generate_sql_with_llm(
+    question: str, feedback: Optional[str] = None, analysis_hint: Optional[str] = None
+) -> str:
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     google_genai.configure(api_key=api_key)
-    
+
     # Dataset Schema
     schema = (
         "=== DATASET SCHEMA ===\n"
@@ -50,7 +52,7 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         "week_52_high (REAL), week_52_low (REAL), description (TEXT)\n"
         "  Note: companies.symbol is the primary key, NOT 'ticker'\n\n"
     )
-    
+
     # Constraints cho visualization queries
     constraints = (
         "=== QUY TẮC QUAN TRỌNG CHO VISUALIZATION ===\n"
@@ -72,7 +74,7 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         "   → GROUP BY category đó (sector, industry...)\n\n"
         "6. Không được include columns không trong GROUP BY trừ khi chúng được aggregate (AVG, SUM, COUNT, MIN, MAX).\n\n"
     )
-    
+
     # Few-shot examples
     examples = (
         "=== VÍ DỤ ĐÚNG (Few-shot Examples) ===\n\n"
@@ -95,7 +97,7 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         "❌ SAI: Không GROUP BY khi cần aggregate per company\n"
         "❌ SAI: Include non-aggregated columns without GROUP BY\n\n"
     )
-    
+
     system = (
         "Bạn là trợ lý tạo SQL cho PostgreSQL.\n\n"
         f"{schema}"
@@ -127,9 +129,9 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         "=== QUY TRÌNH ===\n"
         "Bước 1: Mô tả ngắn gọn (1 câu) SQL phải tính toán gì và GROUP BY gì.\n"
         "Bước 2: Viết SQL.\n"
-        "Format: \"Reasoning: [mô tả]. SQL: [câu lệnh SQL]\"\n"
+        'Format: "Reasoning: [mô tả]. SQL: [câu lệnh SQL]"\n'
     )
-    
+
     hint_text = _build_hint_text(analysis_hint)
     if feedback:
         prompt_text = (
@@ -140,11 +142,11 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         )
     else:
         prompt_text = f"{system}{hint_text}\n\nCâu hỏi: {question}"
-    
+
     model = google_genai.GenerativeModel("gemini-2.0-flash")
     resp = model.generate_content(prompt_text)
     response_text = (resp.text or "").strip()
-    
+
     # Extract SQL từ response (có thể có reasoning trước)
     sql = response_text
     # Nếu LLM trả về code block ở giữa text -> ưu tiên trích code block
@@ -155,9 +157,9 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         sql = response_text.split("SQL:")[-1].strip()
     elif "sql:" in response_text.lower():
         sql = response_text.split("sql:")[-1].strip()
-    
+
     sql = sql.strip()
-    
+
     # Loại bỏ markdown code blocks nếu có
     # LLM đôi khi trả về: ```postgresql\nSELECT...\n``` hoặc ```sql\nSELECT...\n```
     if sql.startswith("```"):
@@ -168,16 +170,18 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]  # Bỏ dòng cuối
         sql = "\n".join(lines).strip()
-    
+
     # Bỏ mọi phần text/Reasoning đứng trước câu lệnh SQL (chỉ giữ từ khóa SQL đầu tiên)
-    first_sql_match = re.search(r"\b(WITH|SELECT|INSERT|UPDATE|DELETE)\b", sql, re.IGNORECASE)
+    first_sql_match = re.search(
+        r"\b(WITH|SELECT|INSERT|UPDATE|DELETE)\b", sql, re.IGNORECASE
+    )
     if first_sql_match:
-        sql = sql[first_sql_match.start():].strip()
-    
+        sql = sql[first_sql_match.start() :].strip()
+
     # Thêm dấu ; nếu chưa có
     if sql and not sql.endswith(";"):
         sql += ";"
-    
+
     # Post-processing: Convert SQLite syntax sang PostgreSQL syntax
     # Chuyển strftime() thành TO_CHAR() hoặc EXTRACT()
     # strftime('%Y', date) -> TO_CHAR(date, 'YYYY')
@@ -185,51 +189,51 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
         r"strftime\s*\(\s*'%Y'\s*,\s*(\w+)\s*\)",
         r"TO_CHAR(\1, 'YYYY')",
         sql,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
     # strftime('%m', date) -> TO_CHAR(date, 'MM')
     sql = re.sub(
         r"strftime\s*\(\s*'%m'\s*,\s*(\w+)\s*\)",
         r"TO_CHAR(\1, 'MM')",
         sql,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
     # strftime('%d', date) -> TO_CHAR(date, 'DD')
     sql = re.sub(
         r"strftime\s*\(\s*'%d'\s*,\s*(\w+)\s*\)",
         r"TO_CHAR(\1, 'DD')",
         sql,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
     # strftime('%W', date) -> TO_CHAR(date, 'IW') (ISO week)
     sql = re.sub(
         r"strftime\s*\(\s*'%W'\s*,\s*(\w+)\s*\)",
         r"TO_CHAR(\1, 'IW')",
         sql,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
     # strftime('%Y-%m-%d', date) -> TO_CHAR(date, 'YYYY-MM-DD')
     sql = re.sub(
         r"strftime\s*\(\s*'%Y-%m-%d'\s*,\s*(\w+)\s*\)",
         r"TO_CHAR(\1, 'YYYY-MM-DD')",
         sql,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
     # date('now', '-X month') -> CURRENT_DATE - INTERVAL 'X month'
     sql = re.sub(
         r"date\s*\(\s*'now'\s*,\s*'-(\d+)\s+month'\s*\)",
         r"CURRENT_DATE - INTERVAL '\1 month'",
         sql,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
     # date('now', '-X day') -> CURRENT_DATE - INTERVAL 'X day'
     sql = re.sub(
         r"date\s*\(\s*'now'\s*,\s*'-(\d+)\s+day'\s*\)",
         r"CURRENT_DATE - INTERVAL '\1 day'",
         sql,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
-    
+
     # Post-processing: Sửa WHERE name = '...' thành WHERE name ILIKE '%...%' khi tìm ticker symbol
     # Pattern: SELECT symbol FROM companies WHERE name = '...'
     # Hoặc: SELECT symbol FROM companies WHERE name = :company
@@ -240,51 +244,54 @@ def generate_sql_with_llm(question: str, feedback: Optional[str] = None, analysi
             r"WHERE\s+name\s*=\s*'([^']+)'",
             r"WHERE name ILIKE '%' || '\1' || '%'",
             sql,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
         # Sửa WHERE name = :company thành WHERE name ILIKE '%' || :company || '%'
         sql = re.sub(
             r"WHERE\s+name\s*=\s*:company\b",
             r"WHERE name ILIKE '%' || :company || '%'",
             sql,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
-    
+
     # Post-processing: Sửa WHERE name ILIKE '%' || :company || '%' thành WHERE symbol = :ticker
     # Khi đang query metadata từ companies (không phải ticker symbol query)
     # Chỉ sửa khi đang SELECT metadata fields (sector, country, industry, description, website, market_cap, pe_ratio, dividend_yield, week_52_high, week_52_low, etc.)
     metadata_fields_pattern = r"SELECT\s+(?:sector|country|industry|description|website|market_cap|pe_ratio|dividend_yield|week_52_high|week_52_low|52_week_high|52_week_low)\s+FROM\s+companies"
-    if re.search(metadata_fields_pattern, sql, re.IGNORECASE) and not re.search(r"SELECT\s+symbol\s+FROM\s+companies", sql, re.IGNORECASE):
+    if re.search(metadata_fields_pattern, sql, re.IGNORECASE) and not re.search(
+        r"SELECT\s+symbol\s+FROM\s+companies", sql, re.IGNORECASE
+    ):
         # Sửa WHERE name ILIKE '%' || :company || '%' thành WHERE symbol = :ticker
         sql = re.sub(
             r"WHERE\s+name\s+ILIKE\s+'%%'\s*\|\|\s*:company\s*\|\|\s*'%%'",
             r"WHERE symbol = :ticker",
             sql,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
         # Sửa WHERE name = :company thành WHERE symbol = :ticker
         sql = re.sub(
             r"WHERE\s+name\s*=\s*:company\b",
             r"WHERE symbol = :ticker",
             sql,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
         # Sửa WHERE name = 'literal' thành WHERE symbol = :ticker
         sql = re.sub(
             r"WHERE\s+name\s*=\s*'([^']+)'",
             r"WHERE symbol = :ticker",
             sql,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
-    
+
     return sql
-    
+
+
 def generate_sql(state: Dict[str, Any]) -> Dict[str, Any]:
     question = state.get("question", "")
     # Có thể dùng feedback từ vòng trước
     feedback = state.get("feedback")
     analysis_hint = state.get("analysis_hint")
-    sql = generate_sql_with_llm(question, feedback=feedback, analysis_hint=analysis_hint)
+    sql = generate_sql_with_llm(
+        question, feedback=feedback, analysis_hint=analysis_hint
+    )
     return {**state, "sql": sql, "used_sample": False}
-
-
