@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { FormEvent } from 'react'
+import Plot from 'react-plotly.js'
 import './App.css'
 
 type DjiaQueryResponse = {
@@ -10,6 +11,7 @@ type DjiaQueryResponse = {
   error?: string | null
   rows: Record<string, unknown>[]
   conversation_id: string | null
+  chart_json?: string | null
 }
 
 type LocalSession = {
@@ -46,6 +48,11 @@ type ConversationDetail = {
     used_sample?: boolean
     error?: string | null
     rows?: Record<string, unknown>[] | null
+    metadata?: {
+      workflow?: unknown[]
+      complexity?: unknown
+      chart_json?: string | null
+    } | null
     created_at: string
   }[]
 }
@@ -58,6 +65,7 @@ type ChatMessage = {
     sql?: string
     rows?: Record<string, unknown>[]
     used_sample?: boolean
+    chart_json?: string | null
   }
 }
 
@@ -100,7 +108,8 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, { sql: boolean; table: boolean }>>({})
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, { sql: boolean; table: boolean; chart: boolean }>>({})
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const fetchConversations = useCallback(async () => {
     if (!user) return
@@ -141,6 +150,16 @@ function App() {
       setActiveConversationId(null)
     }
   }, [user, fetchConversations])
+
+  // Scroll đến cuối khi messages thay đổi (khi load conversation hoặc có message mới)
+  useEffect(() => {
+    if (messagesEndRef.current && messages.length > 0) {
+      // Sử dụng setTimeout để đảm bảo DOM đã render xong
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 150)
+    }
+  }, [messages])
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
@@ -250,20 +269,28 @@ function App() {
           sql: msg.sql || undefined,
           rows: msg.rows || undefined,
           used_sample: msg.used_sample || false,
+          chart_json: msg.metadata?.chart_json || null,
         } : undefined,
       }))
       setMessages(mapped)
       
-      // Khởi tạo collapsed state cho tất cả messages
-      const initialCollapsed: Record<string, { sql: boolean; table: boolean }> = {}
+      // Khởi tạo collapsed state cho tất cả messages - mặc định đóng
+      const initialCollapsed: Record<string, { sql: boolean; table: boolean; chart: boolean }> = {}
       mapped.forEach((msg) => {
         if (msg.role === 'assistant' && msg.answerData) {
-          initialCollapsed[msg.id] = { sql: false, table: false }
+          initialCollapsed[msg.id] = { sql: true, table: true, chart: false }
         }
       })
       setCollapsedSections(initialCollapsed)
       setActiveConversationId(conversationId)
       setActiveLocalSessionId(null) // Clear local session when loading server conversation
+      
+      // Scroll đến cuối sau khi load xong
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+        }
+      }, 200)
     } catch (err) {
       console.error(err)
     }
@@ -294,11 +321,11 @@ function App() {
     })
     setMessages(sessionMessages)
     
-    // Khởi tạo collapsed state cho tất cả messages
-    const initialCollapsed: Record<string, { sql: boolean; table: boolean }> = {}
+    // Khởi tạo collapsed state cho tất cả messages - mặc định đóng
+    const initialCollapsed: Record<string, { sql: boolean; table: boolean; chart: boolean }> = {}
     sessionMessages.forEach((msg) => {
       if (msg.role === 'assistant' && msg.answerData) {
-        initialCollapsed[msg.id] = { sql: false, table: false }
+        initialCollapsed[msg.id] = { sql: true, table: true, chart: false }
       }
     })
     setCollapsedSections(initialCollapsed)
@@ -318,6 +345,13 @@ function App() {
     } else {
       setAnswer(null)
     }
+    
+    // Scroll đến cuối sau khi load xong
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }
+    }, 200)
   }
 
   const formatDateTime = (iso: string) => {
@@ -339,6 +373,12 @@ function App() {
     e.preventDefault()
     if (!question.trim()) return
 
+    // Lưu question trước khi clear
+    const currentQuestion = question.trim()
+    
+    // Clear input ngay lập tức
+    setQuestion('')
+
     try {
       setLoadingQuery(true)
       setQueryError(null)
@@ -347,11 +387,11 @@ function App() {
       const userMsg: ChatMessage = {
         id: `u-${Date.now()}`,
         role: 'user',
-        content: question,
+        content: currentQuestion,
       }
       setMessages((prev) => [...prev, userMsg])
 
-      const payload: Record<string, unknown> = { question }
+      const payload: Record<string, unknown> = { question: currentQuestion }
       if (user && activeConversationId) {
         payload.conversation_id = activeConversationId
       }
@@ -379,15 +419,16 @@ function App() {
           sql: data.sql,
           rows: data.rows,
           used_sample: data.used_sample,
+          chart_json: data.chart_json,
         },
       }
       setMessages((prev) => [...prev, assistantMsg])
       
-      // Mặc định mở tất cả sections cho message mới
+      // Mặc định đóng tất cả sections cho message mới
       const msgId = assistantMsg.id
       setCollapsedSections((prev) => ({
         ...prev,
-        [msgId]: { sql: false, table: false },
+        [msgId]: { sql: true, table: true, chart: false }, // Chart mặc định mở
       }))
 
       if (user) {
@@ -440,11 +481,13 @@ function App() {
     }
   }
 
-  const toggleSection = (messageId: string, section: 'sql' | 'table') => {
+  const toggleSection = (messageId: string, section: 'sql' | 'table' | 'chart') => {
     setCollapsedSections((prev) => ({
       ...prev,
       [messageId]: {
-        ...prev[messageId],
+        sql: prev[messageId]?.sql ?? true,
+        table: prev[messageId]?.table ?? true,
+        chart: prev[messageId]?.chart ?? false,
         [section]: !prev[messageId]?.[section],
       },
     }))
@@ -608,7 +651,7 @@ function App() {
                 </div>
                 <div className="sidebar-user-info">
                   <div className="sidebar-user-name">{user.username}</div>
-                  <div className="sidebar-user-status">Free</div>
+
                 </div>
               </div>
             )}
@@ -669,87 +712,164 @@ function App() {
 
             <div className="chat-messages">
               {messages.map((msg) => {
-                const isCollapsed = collapsedSections[msg.id] || { sql: false, table: false }
+                const isCollapsed = collapsedSections[msg.id] || { sql: false, table: false, chart: false }
                 const answerData = msg.answerData
                 const rows = answerData?.rows || []
                 const columns = rows[0] ? Object.keys(rows[0]) : []
 
                 return (
                   <div key={msg.id}>
-                    <div
-                      className={`chat-message ${msg.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
-                    >
-                      <div className="chat-message-content">
-                        <div className="chat-bubble">
-                          <p>{msg.content}</p>
+                    {/* User message - luôn hiển thị */}
+                    {msg.role === 'user' && (
+                      <div className="chat-message chat-message-user">
+                        <div className="chat-message-content">
+                          <div className="chat-bubble">
+                            <p>{msg.content}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Assistant message - chỉ hiển thị text nếu không có biểu đồ */}
+                    {msg.role === 'assistant' && !answerData?.chart_json && (
+                      <div className="chat-message chat-message-assistant">
+                        <div className="chat-message-content">
+                          <div className="chat-bubble">
+                            <p>{msg.content}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {msg.role === 'assistant' && answerData && (
                       <>
-                        {answerData.sql && (
-                          <div className="chat-message chat-message-assistant">
-                            <div className="chat-message-content">
-                              <div className="chat-bubble chat-bubble-result">
-                                <div className="result-header">
-                                  <h3 
-                                    className="result-header-title clickable"
-                                    onClick={() => toggleSection(msg.id, 'sql')}
-                                  >
-                                    SQL đã chạy
-                                    <span className="collapse-icon">
-                                      {isCollapsed.sql ? '▼' : '▲'}
-                                    </span>
-                                  </h3>
-                                  {answerData.used_sample && <span className="badge badge-success">Dùng SQL mẫu</span>}
-                                </div>
-                                {!isCollapsed.sql && (
-                                  <pre className="sql-block">{answerData.sql}</pre>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {rows.length > 0 && (
+                        {/* Nếu có biểu đồ, chỉ hiển thị biểu đồ */}
+                        {answerData.chart_json ? (
                           <div className="chat-message chat-message-assistant">
                             <div className="chat-message-content">
                               <div className="chat-bubble chat-bubble-result">
                                 <h3 
                                   className="result-header-title clickable"
-                                  onClick={() => toggleSection(msg.id, 'table')}
+                                  onClick={() => toggleSection(msg.id, 'chart')}
                                 >
-                                  Bảng dữ liệu
+                                  Biểu đồ
                                   <span className="collapse-icon">
-                                    {isCollapsed.table ? '▼' : '▲'}
+                                    {isCollapsed.chart ? '▼' : '▲'}
                                   </span>
                                 </h3>
-                                {!isCollapsed.table && (
-                                  <div className="table-wrapper">
-                                    <table className="data-table">
-                                      <thead>
-                                        <tr>
-                                          {columns.map((col) => (
-                                            <th key={col}>{col}</th>
-                                          ))}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {rows.map((row, idx) => (
-                                          <tr key={idx}>
-                                            {columns.map((col) => (
-                                              <td key={col}>{String(row[col] ?? '')}</td>
-                                            ))}
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
+                                {!isCollapsed.chart && (
+                                  <div className="chart-wrapper">
+                                    {(() => {
+                                      try {
+                                        const chartData = JSON.parse(answerData.chart_json!)
+                                        // Cập nhật layout để responsive và vừa với container
+                                        const updatedLayout = {
+                                          ...chartData.layout,
+                                          autosize: true,
+                                          width: undefined,
+                                          height: 450,
+                                          margin: {
+                                            l: 60,
+                                            r: 30,
+                                            t: 30,
+                                            b: 60,
+                                            pad: 4,
+                                          },
+                                          paper_bgcolor: 'rgba(0,0,0,0)',
+                                          plot_bgcolor: 'rgba(0,0,0,0)',
+                                        }
+                                        return (
+                                          <div style={{ width: '100%', height: '450px', position: 'relative' }}>
+                                            <Plot
+                                              data={chartData.data}
+                                              layout={updatedLayout}
+                                              config={{ 
+                                                responsive: true, 
+                                                displayModeBar: true,
+                                                displaylogo: false,
+                                                modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                                              }}
+                                              useResizeHandler={true}
+                                              style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
+                                            />
+                                          </div>
+                                        )
+                                      } catch (e) {
+                                        return <p>Không thể hiển thị biểu đồ</p>
+                                      }
+                                    })()}
                                   </div>
                                 )}
                               </div>
                             </div>
                           </div>
+                        ) : (
+                          /* Nếu không có biểu đồ, hiển thị SQL và bảng dữ liệu */
+                          <>
+                            {answerData.sql && (
+                              <div className="chat-message chat-message-assistant">
+                                <div className="chat-message-content">
+                                  <div className="chat-bubble chat-bubble-result">
+                                    <div className="result-header">
+                                      <h3 
+                                        className="result-header-title clickable"
+                                        onClick={() => toggleSection(msg.id, 'sql')}
+                                      >
+                                        SQL đã chạy
+                                        <span className="collapse-icon">
+                                          {isCollapsed.sql ? '▼' : '▲'}
+                                        </span>
+                                      </h3>
+                                      {answerData.used_sample && <span className="badge badge-success">Dùng SQL mẫu</span>}
+                                    </div>
+                                    {!isCollapsed.sql && (
+                                      <pre className="sql-block">{answerData.sql}</pre>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {rows.length > 0 && (
+                              <div className="chat-message chat-message-assistant">
+                                <div className="chat-message-content">
+                                  <div className="chat-bubble chat-bubble-result">
+                                    <h3 
+                                      className="result-header-title clickable"
+                                      onClick={() => toggleSection(msg.id, 'table')}
+                                    >
+                                      Bảng dữ liệu
+                                      <span className="collapse-icon">
+                                        {isCollapsed.table ? '▼' : '▲'}
+                                      </span>
+                                    </h3>
+                                    {!isCollapsed.table && (
+                                      <div className="table-wrapper">
+                                        <table className="data-table">
+                                          <thead>
+                                            <tr>
+                                              {columns.map((col) => (
+                                                <th key={col}>{col}</th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {rows.map((row, idx) => (
+                                              <tr key={idx}>
+                                                {columns.map((col) => (
+                                                  <td key={col}>{String(row[col] ?? '')}</td>
+                                                ))}
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </>
                     )}
@@ -769,6 +889,9 @@ function App() {
                   </div>
                 </div>
               )}
+              
+              {/* Marker để scroll đến cuối */}
+              <div ref={messagesEndRef} />
             </div>
           </main>
         )}

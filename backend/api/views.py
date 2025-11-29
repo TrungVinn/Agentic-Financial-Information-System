@@ -148,6 +148,7 @@ def djia_query(request):
         metadata={
             "workflow": payload["workflow"],
             "complexity": payload["complexity"],
+            "chart_json": chart_json,
         },
     )
 
@@ -198,6 +199,7 @@ def conversation_messages(request, conversation_id: str):
             "used_sample": msg.used_sample,
             "error": msg.error,
             "rows": msg.rows_json,
+            "metadata": msg.metadata,
             "created_at": msg.created_at.isoformat(),
         }
         for msg in messages

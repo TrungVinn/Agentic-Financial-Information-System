@@ -88,7 +88,7 @@ body {
   padding-top: 60px;
   padding-bottom: 120px;
   overflow-y: auto;
-  width: 192%;
+  width: 100%;
 }
 
 .chat-welcome {
@@ -100,16 +100,22 @@ body {
 }
 
 .chat-welcome-title {
-  font-size: 1rem;
+  font-size: 2rem;
   font-weight: 600;
   color: #ececf1;
   text-align: center;
   margin: 0;
 }
 
+/* Container chính cho messages - căn giữa như ChatGPT */
 .chat-messages {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  max-width: 768px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0;
 }
 
 /* Mỗi message - full width của container */
@@ -135,7 +141,9 @@ body {
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
   max-width: 85%;
+  width: fit-content;
   margin-left: auto;
+  margin-right: 0;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   word-wrap: break-word;
 }
@@ -155,17 +163,18 @@ body {
   color: #ececf1;
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
-  max-width: 85%;
+  max-width: 100%;
+  width: 100%;
   margin-right: auto;
+  margin-left: 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
   word-wrap: break-word;
 }
 
 /* Content wrapper bên trong mỗi message - căn giữa nội dung */
 .chat-message-content {
-  max-width: 768px;
   width: 100%;
-  margin: 0 auto;
+  margin: 0;
   padding: 1.5rem 1rem;
   box-sizing: border-box;
 }
@@ -188,6 +197,7 @@ body {
   background-color: transparent !important;
   max-width: 100% !important;
   margin: 0 !important;
+  width: 100%;
 }
 
 .result-header {
@@ -295,6 +305,56 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
   overflow-x: auto;
+}
+
+.chart-wrapper {
+  margin-top: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #1e1e1e;
+  padding: 1rem;
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  min-height: 450px;
+  height: 450px;
+}
+
+.chart-wrapper > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  position: relative;
+}
+
+.chart-wrapper .js-plotly-plot {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+}
+
+.chart-wrapper .plotly {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+}
+
+.chart-wrapper .plot-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+}
+
+/* Responsive cho biểu đồ */
+@media (max-width: 768px) {
+  .chart-wrapper {
+    padding: 0.5rem;
+  }
+  
+  .chart-wrapper .js-plotly-plot {
+    height: 350px !important;
+  }
 }
 
 .data-table {
