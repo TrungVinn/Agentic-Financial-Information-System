@@ -10,6 +10,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from graphs.djia_graph import run_djia_graph
+from nodes.sql_executor import run_sql
 from .models import Conversation, Message
 
 
@@ -40,12 +41,15 @@ def djia_query(request):
     if not question:
         return Response({"detail": "Thiếu trường 'question'."}, status=400)
 
+    # Kiểm tra force_chart flag từ frontend
+    force_chart = request.data.get("force_chart", False)
+
     user = request.user if request.user.is_authenticated else None
 
     # ========== TRƯỜNG HỢP CHƯA ĐĂNG NHẬP: KHÔNG LƯU DB ==========
     if user is None:
         try:
-            result = run_djia_graph(question)
+            result = run_djia_graph(question, force_chart=force_chart)
         except Exception as e:
             return Response(
                 {"success": False, "error": f"Lỗi nội bộ khi chạy agent: {e}"},
@@ -99,7 +103,7 @@ def djia_query(request):
 
     # ========== CHẠY AGENT ==========
     try:
-        result = run_djia_graph(question)
+        result = run_djia_graph(question, force_chart=force_chart)
     except Exception as e:
         Message.objects.create(
             conversation=conversation,
@@ -287,3 +291,45 @@ def delete_conversation(request, conversation_id: str):
 
     conversation.delete()
     return Response({"success": True})
+
+
+@csrf_exempt
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def execute_sql(request):
+    """
+    Chạy SQL trực tiếp trên database (không qua LLM).
+    
+    Body:
+        { "sql": "SELECT * FROM prices WHERE ticker = 'AAPL' LIMIT 10" }
+    
+    Returns:
+        {
+            "success": true/false,
+            "rows": [...],
+            "sql": "SQL đã chạy",
+            "error": null hoặc error message
+        }
+    """
+    sql = (request.data.get("sql") or "").strip()
+    if not sql:
+        return Response({"detail": "Thiếu trường 'sql'."}, status=400)
+    
+    try:
+        # Chạy SQL trực tiếp (không có parameters)
+        df, display_sql = run_sql(sql, {})
+        rows = _df_to_rows(df)
+        
+        return Response({
+            "success": True,
+            "rows": rows,
+            "sql": display_sql,
+            "error": None,
+        })
+    except Exception as e:
+        return Response({
+            "success": False,
+            "rows": [],
+            "sql": sql,
+            "error": str(e),
+        }, status=500)

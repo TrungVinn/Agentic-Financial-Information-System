@@ -126,9 +126,9 @@ def build_chart_sql(
         "Example 2: Pie chart distribution by sector\n"
         "SQL: SELECT sector, COUNT(*) as count FROM companies GROUP BY sector;\n\n"
         "Example 3: Bar chart total dividends per company in 2024\n"
-        "SQL: SELECT p.ticker, c.name, SUM(p.dividends) as total_dividends FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE strftime('%Y', p.date) = '2024' GROUP BY p.ticker;\n\n"
+        "SQL: SELECT p.ticker, c.name, SUM(p.dividends) as total_dividends FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE EXTRACT(YEAR FROM p.date) = 2024 GROUP BY p.ticker;\n\n"
         "Example 4: Scatter plot average volume vs average price per company in 2024\n"
-        "SQL: SELECT p.ticker, c.name, AVG(p.volume) as avg_volume, AVG(p.close) as avg_close FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE strftime('%Y', p.date) = '2024' GROUP BY p.ticker;\n\n"
+        "SQL: SELECT p.ticker, c.name, AVG(p.volume) as avg_volume, AVG(p.close) as avg_close FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE EXTRACT(YEAR FROM p.date) = 2024 GROUP BY p.ticker;\n\n"
         "❌ SAI: GROUP BY date khi câu hỏi về 'per company'\n"
         "❌ SAI: Không GROUP BY khi cần aggregate per company\n\n"
     )
@@ -182,8 +182,62 @@ def build_chart_sql(
                 lines = lines[:-1]
             sql = "\n".join(lines).strip()
 
+        # Bỏ mọi phần text/Reasoning đứng trước câu lệnh SQL
+        first_sql_match = re.search(
+            r"\b(WITH|SELECT|INSERT|UPDATE|DELETE)\b", sql, re.IGNORECASE
+        )
+        if first_sql_match:
+            sql = sql[first_sql_match.start() :].strip()
+
         if sql and not sql.endswith(";"):
             sql += ";"
+
+        # Post-processing: Convert SQLite syntax sang PostgreSQL syntax
+        # Chuyển strftime() thành EXTRACT() hoặc TO_CHAR()
+        # Xử lý tất cả các pattern: strftime('%Y', date), strftime('%%Y', date), strftime('%%%Y', date), etc.
+        # strftime('%Y', date) hoặc strftime('%%Y', date) -> EXTRACT(YEAR FROM date)
+        sql = re.sub(
+            r"strftime\s*\(\s*'%+Y'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+            r"EXTRACT(YEAR FROM \1)",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        # strftime('%m', date) hoặc strftime('%%m', date) -> EXTRACT(MONTH FROM date)
+        sql = re.sub(
+            r"strftime\s*\(\s*'%+m'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+            r"EXTRACT(MONTH FROM \1)",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        # strftime('%d', date) hoặc strftime('%%d', date) -> EXTRACT(DAY FROM date)
+        sql = re.sub(
+            r"strftime\s*\(\s*'%+d'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+            r"EXTRACT(DAY FROM \1)",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        # strftime('%Y-%m-%d', date) -> TO_CHAR(date, 'YYYY-MM-DD')
+        sql = re.sub(
+            r"strftime\s*\(\s*'%+Y-%+m-%+d'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+            r"TO_CHAR(\1, 'YYYY-MM-DD')",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        # strftime('%W', date) -> EXTRACT(WEEK FROM date)
+        sql = re.sub(
+            r"strftime\s*\(\s*'%+W'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+            r"EXTRACT(WEEK FROM \1)",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        # Xử lý trường hợp so sánh: strftime('%%Y', date) = '2024' -> EXTRACT(YEAR FROM date) = 2024
+        # Loại bỏ dấu nháy đơn quanh số năm nếu có
+        sql = re.sub(
+            r"EXTRACT\(YEAR FROM ([a-zA-Z_][a-zA-Z0-9_.]*)\)\s*=\s*'(\d{4})'",
+            r"EXTRACT(YEAR FROM \1) = \2",
+            sql,
+            flags=re.IGNORECASE,
+        )
 
         return sql or None
     except Exception as e:

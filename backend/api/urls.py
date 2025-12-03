@@ -8,6 +8,7 @@ from .views import (
     me_view,
     register_view,
     delete_conversation,
+    execute_sql,
 )
 
 urlpatterns = [
@@ -27,6 +28,7 @@ urlpatterns = [
     path("auth/logout/", logout_view, name="auth-logout"),
     path("auth/me/", me_view, name="auth-me"),
     path("auth/register/", register_view, name="auth-register"),
+    path("execute-sql/", execute_sql, name="execute-sql"),
 ]
 
 

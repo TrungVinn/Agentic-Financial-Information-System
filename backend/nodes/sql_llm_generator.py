@@ -80,10 +80,10 @@ def generate_sql_with_llm(
         "=== VÍ DỤ ĐÚNG (Few-shot Examples) ===\n\n"
         "Example 1: Average closing price per company in 2024\n"
         "Reasoning: We need one row per company → GROUP BY ticker, aggregate AVG(close) for the year.\n"
-        "SQL: SELECT p.ticker, c.name, AVG(p.close) AS avg_close FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE strftime('%Y', p.date) = '2024' GROUP BY p.ticker;\n\n"
+        "SQL: SELECT p.ticker, c.name, AVG(p.close) AS avg_close FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE EXTRACT(YEAR FROM p.date) = 2024 GROUP BY p.ticker;\n\n"
         "Example 2: Total dividends per company in 2024\n"
         "Reasoning: We need total dividends for each company → GROUP BY ticker, use SUM(dividends).\n"
-        "SQL: SELECT p.ticker, c.name, SUM(p.dividends) AS total_dividends FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE strftime('%Y', p.date) = '2024' GROUP BY p.ticker;\n\n"
+        "SQL: SELECT p.ticker, c.name, SUM(p.dividends) AS total_dividends FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE EXTRACT(YEAR FROM p.date) = 2024 GROUP BY p.ticker;\n\n"
         "Example 3: Scatter plot market cap vs P/E for all companies\n"
         "Reasoning: Each point = one company, no aggregation needed, just select from companies.\n"
         "SQL: SELECT symbol, name, market_cap, pe_ratio FROM companies;\n\n"
@@ -92,7 +92,7 @@ def generate_sql_with_llm(
         "SQL: SELECT sector, COUNT(*) AS count FROM companies GROUP BY sector;\n\n"
         "Example 5: Scatter plot average volume vs average price per company in 2024\n"
         "Reasoning: Each point = one company → GROUP BY ticker, aggregate AVG(volume) and AVG(close).\n"
-        "SQL: SELECT p.ticker, c.name, AVG(p.volume) AS avg_volume, AVG(p.close) AS avg_close FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE strftime('%Y', p.date) = '2024' GROUP BY p.ticker;\n\n"
+        "SQL: SELECT p.ticker, c.name, AVG(p.volume) AS avg_volume, AVG(p.close) AS avg_close FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE EXTRACT(YEAR FROM p.date) = 2024 GROUP BY p.ticker;\n\n"
         "❌ SAI: GROUP BY date khi câu hỏi về 'per company'\n"
         "❌ SAI: Không GROUP BY khi cần aggregate per company\n"
         "❌ SAI: Include non-aggregated columns without GROUP BY\n\n"
@@ -183,39 +183,48 @@ def generate_sql_with_llm(
         sql += ";"
 
     # Post-processing: Convert SQLite syntax sang PostgreSQL syntax
-    # Chuyển strftime() thành TO_CHAR() hoặc EXTRACT()
-    # strftime('%Y', date) -> TO_CHAR(date, 'YYYY')
+    # Chuyển strftime() thành EXTRACT() hoặc TO_CHAR()
+    # Xử lý tất cả các pattern: strftime('%Y', date), strftime('%%Y', date), strftime('%%%Y', date), etc.
+    # strftime('%Y', date) hoặc strftime('%%Y', date) -> EXTRACT(YEAR FROM date)
     sql = re.sub(
-        r"strftime\s*\(\s*'%Y'\s*,\s*(\w+)\s*\)",
-        r"TO_CHAR(\1, 'YYYY')",
+        r"strftime\s*\(\s*'%+Y'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+        r"EXTRACT(YEAR FROM \1)",
         sql,
         flags=re.IGNORECASE,
     )
-    # strftime('%m', date) -> TO_CHAR(date, 'MM')
+    # strftime('%m', date) hoặc strftime('%%m', date) -> EXTRACT(MONTH FROM date)
     sql = re.sub(
-        r"strftime\s*\(\s*'%m'\s*,\s*(\w+)\s*\)",
-        r"TO_CHAR(\1, 'MM')",
+        r"strftime\s*\(\s*'%+m'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+        r"EXTRACT(MONTH FROM \1)",
         sql,
         flags=re.IGNORECASE,
     )
-    # strftime('%d', date) -> TO_CHAR(date, 'DD')
+    # strftime('%d', date) hoặc strftime('%%d', date) -> EXTRACT(DAY FROM date)
     sql = re.sub(
-        r"strftime\s*\(\s*'%d'\s*,\s*(\w+)\s*\)",
-        r"TO_CHAR(\1, 'DD')",
+        r"strftime\s*\(\s*'%+d'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+        r"EXTRACT(DAY FROM \1)",
         sql,
         flags=re.IGNORECASE,
     )
-    # strftime('%W', date) -> TO_CHAR(date, 'IW') (ISO week)
+    # strftime('%W', date) hoặc strftime('%%W', date) -> EXTRACT(WEEK FROM date)
     sql = re.sub(
-        r"strftime\s*\(\s*'%W'\s*,\s*(\w+)\s*\)",
-        r"TO_CHAR(\1, 'IW')",
+        r"strftime\s*\(\s*'%+W'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
+        r"EXTRACT(WEEK FROM \1)",
         sql,
         flags=re.IGNORECASE,
     )
-    # strftime('%Y-%m-%d', date) -> TO_CHAR(date, 'YYYY-MM-DD')
+    # strftime('%Y-%m-%d', date) hoặc strftime('%%Y-%%m-%%d', date) -> TO_CHAR(date, 'YYYY-MM-DD')
     sql = re.sub(
-        r"strftime\s*\(\s*'%Y-%m-%d'\s*,\s*(\w+)\s*\)",
+        r"strftime\s*\(\s*'%+Y-%+m-%+d'\s*,\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)",
         r"TO_CHAR(\1, 'YYYY-MM-DD')",
+        sql,
+        flags=re.IGNORECASE,
+    )
+    # Xử lý trường hợp so sánh: strftime('%%Y', date) = '2024' -> EXTRACT(YEAR FROM date) = 2024
+    # Loại bỏ dấu nháy đơn quanh số năm nếu có
+    sql = re.sub(
+        r"EXTRACT\(YEAR FROM ([a-zA-Z_][a-zA-Z0-9_.]*)\)\s*=\s*'(\d{4})'",
+        r"EXTRACT(YEAR FROM \1) = \2",
         sql,
         flags=re.IGNORECASE,
     )

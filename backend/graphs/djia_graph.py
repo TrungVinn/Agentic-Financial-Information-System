@@ -142,7 +142,7 @@ def build_djia_graph():
     return graph.compile()
 
 
-def run_djia_graph(question: str) -> Dict[str, Any]:
+def run_djia_graph(question: str, force_chart: bool = False) -> Dict[str, Any]:
     """
     Entry point chính để chạy workflow DJIA.
 
@@ -154,6 +154,7 @@ def run_djia_graph(question: str) -> Dict[str, Any]:
 
     Args:
         question: Câu hỏi từ người dùng (tiếng Việt hoặc tiếng Anh)
+        force_chart: Force vẽ biểu đồ bất kể câu hỏi có chứa keyword "plot" hay không
 
     Returns:
         Dictionary chứa:
@@ -182,7 +183,10 @@ def run_djia_graph(question: str) -> Dict[str, Any]:
     workflow_steps = []
 
     # Invoke workflow với initial state
-    result = app.invoke({"question": question})
+    initial_state = {"question": question}
+    if force_chart:
+        initial_state["force_chart"] = True
+    result = app.invoke(initial_state)
 
     # ========== TRACK WORKFLOW STEPS ==========
 

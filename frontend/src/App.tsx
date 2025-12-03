@@ -71,6 +71,10 @@ type ChatMessage = {
 
 function App() {
   const [question, setQuestion] = useState('')
+  const [sqlQuery, setSqlQuery] = useState('')
+  const [queryMode, setQueryMode] = useState<'natural' | 'sql' | 'chart'>('natural') // 'natural', 'sql', hoặc 'chart'
+  const [showModeMenu, setShowModeMenu] = useState(false) // Hiển thị menu chọn mode
+  const modeMenuRef = useRef<HTMLDivElement>(null)
   const [answer, setAnswer] = useState<DjiaQueryResponse | null>(null)
   const [loadingQuery, setLoadingQuery] = useState(false)
   const [queryError, setQueryError] = useState<string | null>(null)
@@ -160,6 +164,23 @@ function App() {
       }, 150)
     }
   }, [messages])
+
+  // Đóng menu khi click ra ngoài
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(event.target as Node)) {
+        setShowModeMenu(false)
+      }
+    }
+
+    if (showModeMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showModeMenu])
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
@@ -369,8 +390,76 @@ function App() {
     }
   }
 
+  const handleExecuteSql = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!sqlQuery.trim()) return
+
+    const currentSql = sqlQuery.trim()
+    setSqlQuery('')
+
+    try {
+      setLoadingQuery(true)
+      setQueryError(null)
+
+      const userMsg: ChatMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: `SQL Query:\n\`\`\`sql\n${currentSql}\n\`\`\``,
+      }
+      setMessages((prev) => [...prev, userMsg])
+
+      const res = await fetch('/api/execute-sql/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ sql: currentSql }),
+      })
+
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`HTTP ${res.status}: ${text}`)
+      }
+
+      const data = await res.json()
+      
+      const assistantMsg: ChatMessage = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: data.success 
+          ? `Đã thực thi SQL thành công. Trả về ${data.rows.length} dòng dữ liệu.`
+          : `Lỗi khi thực thi SQL: ${data.error}`,
+        answerData: {
+          sql: data.sql,
+          rows: data.rows,
+          used_sample: false,
+        },
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+
+      const msgId = assistantMsg.id
+      setCollapsedSections((prev) => ({
+        ...prev,
+        [msgId]: { sql: false, table: false, chart: false }, // Mở tất cả sections cho SQL query
+      }))
+    } catch (err) {
+      setQueryError((err as Error).message)
+      const errorMsg: ChatMessage = {
+        id: `e-${Date.now()}`,
+        role: 'assistant',
+        content: `Đã xảy ra lỗi: ${(err as Error).message}`,
+      }
+      setMessages((prev) => [...prev, errorMsg])
+    } finally {
+      setLoadingQuery(false)
+    }
+  }
+
   const handleAsk = async (e: FormEvent) => {
     e.preventDefault()
+    if (queryMode === 'sql') {
+      return handleExecuteSql(e)
+    }
+    
     if (!question.trim()) return
 
     // Lưu question trước khi clear
@@ -394,6 +483,10 @@ function App() {
       const payload: Record<string, unknown> = { question: currentQuestion }
       if (user && activeConversationId) {
         payload.conversation_id = activeConversationId
+      }
+      // Nếu ở mode chart, thêm flag để backend force vẽ biểu đồ
+      if (queryMode === 'chart') {
+        payload.force_chart = true
       }
 
       const res = await fetch('/api/query/', {
@@ -475,7 +568,14 @@ function App() {
         }
       }
     } catch (err) {
+      console.error('Error in handleAsk:', err)
       setQueryError((err as Error).message)
+      const errorMsg: ChatMessage = {
+        id: `e-${Date.now()}`,
+        role: 'assistant',
+        content: `Đã xảy ra lỗi: ${(err as Error).message}`,
+      }
+      setMessages((prev) => [...prev, errorMsg])
     } finally {
       setLoadingQuery(false)
     }
@@ -707,6 +807,41 @@ function App() {
             {messages.length === 0 && !loadingQuery && (
               <div className="chat-welcome">
                 <h2 className="chat-welcome-title">Hệ thống hỏi đáp thông minh về dữ liệu chứng khoán DJIA</h2>
+                
+                <div className="welcome-content">
+                  <div className="welcome-section">
+                    <h3 className="welcome-section-title">Về Dữ Liệu</h3>
+                    <div className="welcome-section-content">
+                      <p><strong>30 công ty DJIA:</strong> Apple (AAPL), Microsoft (MSFT), Boeing (BA), Coca-Cola (KO), Disney (DIS), Goldman Sachs (GS), IBM (IBM), Intel (INTC), JPMorgan (JPM), Johnson & Johnson (JNJ), McDonald's (MCD), Nike (NKE), Visa (V), Walmart (WMT), Amgen (AMGN), American Express (AXP), Caterpillar (CAT), Salesforce (CRM), Cisco (CSCO), Chevron (CVX), Dow (DOW), Home Depot (HD), Honeywell (HON), 3M (MMM), Merck (MRK), Procter & Gamble (PG), Travelers (TRV), UnitedHealth (UNH), Verizon (VZ), Walgreens Boots Alliance (WBA).</p>
+                      <p><strong>Thông tin công ty:</strong> Mã chứng khoán (symbol), tên công ty (name), lĩnh vực (sector), ngành (industry), quốc gia (country) và website. Các chỉ số tài chính gồm vốn hóa thị trường (market_cap), tỷ lệ P/E (pe_ratio), tỷ suất cổ tức (dividend_yield), giá cao nhất và thấp nhất trong 52 tuần (52_week_high, 52_week_low), cùng mô tả của từng công ty (description).</p>
+                      <p><strong>Dữ liệu giá:</strong> Ngày giao dịch (date), giá mở cửa (open), giá đóng cửa (high), giá cao nhất (close), giá thấp nhất (low), khối lượng giao dịch (volume), cổ tức (dividends), tỷ lệ chia tách cổ phiếu (stock splits).</p>
+                      <p><strong>Khoảng thời gian:</strong> Dữ liệu lịch sử từ 2023 đến 2025.</p>
+                    </div>
+                  </div>
+
+                  <div className="welcome-section">
+                    <h3 className="welcome-section-title">Cách Sử Dụng</h3>
+                    <div className="welcome-section-content">
+                      <p><strong>1. Hỏi bằng ngôn ngữ tự nhiên:</strong></p>
+                      <ul>
+                        <li>Ví dụ: "What was the opening price of Boeing on August 1, 2023?"</li>
+                        <li>Có thể vẽ biểu đồ trong tab chat, trong câu hỏi phải có từ "plot" hoặc "tạo biểu đồ". Có thể chuyển sang tab vẽ biểu đồ ở thanh chat</li>
+                      </ul>
+                      <p><strong>2. Tạo biểu đồ:</strong></p>
+                      <ul>
+                        <li>Click vào nút <strong>+</strong> ở thanh chat và chọn "Tạo biểu đồ"</li>
+                        <li>Nhập yêu cầu tạo biểu đồ</li>
+                        <li>Click "Gửi" để thực thi</li>
+                      </ul>
+                      <p><strong>3. Chạy SQL trực tiếp:</strong></p>
+                      <ul>
+                        <li>Click vào nút <strong>+</strong> ở thanh chat và chọn "SQL Query"</li>
+                        <li>Nhập câu lệnh SQL</li>
+                        <li>Click "Chạy SQL" để thực thi</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -730,8 +865,8 @@ function App() {
                       </div>
                     )}
 
-                    {/* Assistant message - chỉ hiển thị text nếu không có biểu đồ */}
-                    {msg.role === 'assistant' && !answerData?.chart_json && (
+                    {/* Assistant message - hiển thị text answer */}
+                    {msg.role === 'assistant' && (
                       <div className="chat-message chat-message-assistant">
                         <div className="chat-message-content">
                           <div className="chat-bubble">
@@ -741,10 +876,77 @@ function App() {
                       </div>
                     )}
 
+                    {/* Hiển thị SQL, bảng dữ liệu và biểu đồ (nếu có) */}
                     {msg.role === 'assistant' && answerData && (
                       <>
-                        {/* Nếu có biểu đồ, chỉ hiển thị biểu đồ */}
-                        {answerData.chart_json ? (
+                        {/* SQL đã chạy */}
+                        {answerData.sql && (
+                          <div className="chat-message chat-message-assistant">
+                            <div className="chat-message-content">
+                              <div className="chat-bubble chat-bubble-result">
+                                <div className="result-header">
+                                  <h3 
+                                    className="result-header-title clickable"
+                                    onClick={() => toggleSection(msg.id, 'sql')}
+                                  >
+                                    SQL đã chạy
+                                    <span className="collapse-icon">
+                                      {isCollapsed.sql ? '▼' : '▲'}
+                                    </span>
+                                  </h3>
+                                  {answerData.used_sample && <span className="badge badge-success">Dùng SQL mẫu</span>}
+                                </div>
+                                {!isCollapsed.sql && (
+                                  <pre className="sql-block">{answerData.sql}</pre>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Bảng dữ liệu */}
+                        {rows.length > 0 && (
+                          <div className="chat-message chat-message-assistant">
+                            <div className="chat-message-content">
+                              <div className="chat-bubble chat-bubble-result">
+                                <h3 
+                                  className="result-header-title clickable"
+                                  onClick={() => toggleSection(msg.id, 'table')}
+                                >
+                                  Bảng dữ liệu
+                                  <span className="collapse-icon">
+                                    {isCollapsed.table ? '▼' : '▲'}
+                                  </span>
+                                </h3>
+                                {!isCollapsed.table && (
+                                  <div className="table-wrapper">
+                                    <table className="data-table">
+                                      <thead>
+                                        <tr>
+                                          {columns.map((col) => (
+                                            <th key={col}>{col}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {rows.map((row, idx) => (
+                                          <tr key={idx}>
+                                            {columns.map((col) => (
+                                              <td key={col}>{String(row[col] ?? '')}</td>
+                                            ))}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Biểu đồ (nếu có) */}
+                        {answerData.chart_json && (
                           <div className="chat-message chat-message-assistant">
                             <div className="chat-message-content">
                               <div className="chat-bubble chat-bubble-result">
@@ -803,73 +1005,6 @@ function App() {
                               </div>
                             </div>
                           </div>
-                        ) : (
-                          /* Nếu không có biểu đồ, hiển thị SQL và bảng dữ liệu */
-                          <>
-                            {answerData.sql && (
-                              <div className="chat-message chat-message-assistant">
-                                <div className="chat-message-content">
-                                  <div className="chat-bubble chat-bubble-result">
-                                    <div className="result-header">
-                                      <h3 
-                                        className="result-header-title clickable"
-                                        onClick={() => toggleSection(msg.id, 'sql')}
-                                      >
-                                        SQL đã chạy
-                                        <span className="collapse-icon">
-                                          {isCollapsed.sql ? '▼' : '▲'}
-                                        </span>
-                                      </h3>
-                                      {answerData.used_sample && <span className="badge badge-success">Dùng SQL mẫu</span>}
-                                    </div>
-                                    {!isCollapsed.sql && (
-                                      <pre className="sql-block">{answerData.sql}</pre>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {rows.length > 0 && (
-                              <div className="chat-message chat-message-assistant">
-                                <div className="chat-message-content">
-                                  <div className="chat-bubble chat-bubble-result">
-                                    <h3 
-                                      className="result-header-title clickable"
-                                      onClick={() => toggleSection(msg.id, 'table')}
-                                    >
-                                      Bảng dữ liệu
-                                      <span className="collapse-icon">
-                                        {isCollapsed.table ? '▼' : '▲'}
-                                      </span>
-                                    </h3>
-                                    {!isCollapsed.table && (
-                                      <div className="table-wrapper">
-                                        <table className="data-table">
-                                          <thead>
-                                            <tr>
-                                              {columns.map((col) => (
-                                                <th key={col}>{col}</th>
-                                              ))}
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {rows.map((row, idx) => (
-                                              <tr key={idx}>
-                                                {columns.map((col) => (
-                                                  <td key={col}>{String(row[col] ?? '')}</td>
-                                                ))}
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </>
                         )}
                       </>
                     )}
@@ -883,7 +1018,13 @@ function App() {
                     <div className="chat-bubble">
                       <div className="loading-indicator">
                         <div className="spinner" />
-                        <p>Agent đang phân tích câu hỏi, sinh SQL và truy vấn dữ liệu...</p>
+                        <p>
+                          {queryMode === 'sql' 
+                            ? 'Đang thực thi SQL query...' 
+                            : queryMode === 'chart'
+                            ? 'Đang tạo biểu đồ...'
+                            : 'Agent đang phân tích câu hỏi, sinh SQL và truy vấn dữ liệu...'}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -973,22 +1114,112 @@ function App() {
         )}
       </div>
 
-      {currentPage === 'chat' && (
-        <form className="chat-input-bar" onSubmit={handleAsk}>
-          <div className="chat-input-wrapper">
-            <input
-              type="text"
-              className="chat-input"
-              placeholder="Nhập câu hỏi tài chính (VI/EN)..."
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-            />
-            <button className="chat-send-button" type="submit" disabled={loadingQuery}>
-              Gửi
-            </button>
-          </div>
-        </form>
-      )}
+        {currentPage === 'chat' && (
+          <form className="chat-input-bar" onSubmit={handleAsk}>
+            <div className="chat-input-wrapper">
+              {/* Input row */}
+              <div className="chat-input-row">
+                {/* Mode selector button - dấu cộng */}
+                <div className="query-mode-dropdown" ref={modeMenuRef}>
+                  <button
+                    type="button"
+                    className="mode-dropdown-button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setShowModeMenu(!showModeMenu)
+                    }}
+                    title={
+                      queryMode === 'natural' 
+                        ? 'Ngôn ngữ tự nhiên' 
+                        : queryMode === 'sql' 
+                        ? 'SQL Query' 
+                        : 'Tạo biểu đồ'
+                    }
+                  >
+                    <span className="mode-icon">
+                      {showModeMenu ? '✕' : queryMode === 'chart' ? '+' : '+'}
+                    </span>
+                  </button>
+
+                  {/* Dropdown menu */}
+                  {showModeMenu && (
+                    <div className="mode-dropdown-menu">
+                      <button
+                        type="button"
+                        className={`mode-dropdown-item ${queryMode === 'natural' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setQueryMode('natural')
+                          setShowModeMenu(false)
+                        }}
+                      >
+                        Chat
+                      </button>
+                      <button
+                        type="button"
+                        className={`mode-dropdown-item ${queryMode === 'chart' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setQueryMode('chart')
+                          setShowModeMenu(false)
+                        }}
+                      >
+                        Tạo biểu đồ
+                      </button>
+                      <button
+                        type="button"
+                        className={`mode-dropdown-item ${queryMode === 'sql' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setQueryMode('sql')
+                          setShowModeMenu(false)
+                        }}
+                      >
+                        SQL Query
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Input field - Natural Language mode */}
+                {queryMode === 'natural' && (
+                  <input
+                    type="text"
+                    className="chat-input"
+                    placeholder="Nhập câu hỏi tài chính (VI/EN)..."
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                  />
+                )}
+
+                {/* Input field - Chart mode */}
+                {queryMode === 'chart' && (
+                  <input
+                    type="text"
+                    className="chat-input"
+                    placeholder="Nhập yêu cầu tạo biểu đồ (VI/EN)... Ví dụ: Giá đóng cửa của Apple từ tháng 6 đến tháng 9 năm 2024"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                  />
+                )}
+
+                {/* Textarea - SQL mode */}
+                {queryMode === 'sql' && (
+                  <textarea
+                    className="chat-input sql-input"
+                    placeholder="Nhập câu lệnh SQL..."
+                    value={sqlQuery}
+                    onChange={(e) => setSqlQuery(e.target.value)}
+                  />
+                )}
+
+                <button className="chat-send-button" type="submit" disabled={loadingQuery}>
+                  {queryMode === 'sql' ? 'Chạy SQL' : 'Gửi'}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
     </div>
   )
 }

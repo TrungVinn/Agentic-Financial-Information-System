@@ -22,7 +22,7 @@ if os.getenv("GOOGLE_API_KEY") in (None, "") and os.getenv("GEMINI_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 
-def detect_query_complexity(question: str) -> Dict[str, Any]:
+def detect_query_complexity(question: str, force_chart: bool = False) -> Dict[str, Any]:
     """
     Phân tích câu hỏi để xác định độ phức tạp và yêu cầu.
 
@@ -62,12 +62,12 @@ def detect_query_complexity(question: str) -> Dict[str, Any]:
     }
 
     # ========== PHÁT HIỆN YÊU CẦU VẼ BIỂU ĐỒ ==========
-    # Chỉ vẽ biểu đồ khi câu hỏi chứa từ "plot" hoặc "vẽ"
+    # Chỉ vẽ biểu đồ khi câu hỏi chứa từ "plot" hoặc "vẽ", hoặc khi force_chart = True
     chart_trigger_patterns = [r"\bplot\b", r"\bvẽ\b", r"\bve\b"]
     has_chart_trigger = any(re.search(pattern, q) for pattern in chart_trigger_patterns)
-    has_explicit_chart_request = has_chart_trigger
+    has_explicit_chart_request = has_chart_trigger or force_chart
 
-    if has_chart_trigger:
+    if has_chart_trigger or force_chart:
         complexity["needs_chart"] = True
 
         # Xác định loại biểu đồ dựa trên từ khóa
@@ -325,9 +325,10 @@ def plan_query(state: Dict[str, Any]) -> Dict[str, Any]:
         - chart_type: String - loại biểu đồ (nếu cần)
     """
     question = state.get("question", "")
+    force_chart = state.get("force_chart", False)
 
     # Bước 1: Phát hiện độ phức tạp
-    complexity = detect_query_complexity(question)
+    complexity = detect_query_complexity(question, force_chart=force_chart)
 
     # Bước 2: Tạo execution plan cho câu hỏi phức tạp
     if complexity["is_multi_step"]:
