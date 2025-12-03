@@ -1,0 +1,8 @@
+# Place your PDF documents here for RAG indexing
+# Supported formats: .pdf
+# 
+# Example files:
+# - djia_guide.pdf
+# - stock_market_basics.pdf
+# - company_reports.pdf
+

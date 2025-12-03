@@ -40,3 +40,11 @@ scipy>=1.9.0
 
 # Machine learning for embeddings
 scikit-learn>=1.0.0
+
+# RAG - Vector Database & Embeddings
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
+# PDF Processing
+pypdf>=3.0.0
+langchain-text-splitters>=0.2.0
