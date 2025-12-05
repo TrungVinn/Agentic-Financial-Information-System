@@ -312,74 +312,67 @@ def retrieve_from_db(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
 
 def detect_general_question(question: str) -> bool:
     """
-    Phát hiện xem câu hỏi có phải là general knowledge question không.
+    Phát hiện xem câu hỏi có liên quan đến kiến thức trong PDF documents không.
     
-    General questions: Hỏi về khái niệm, giải thích, định nghĩa
-    Data questions: Hỏi về giá, volume, so sánh cụ thể với ticker/date
+    Sử dụng LLM để phân tích câu hỏi và xác định:
+    - Nếu câu hỏi liên quan đến kiến thức tổng quát, khái niệm, giải thích có thể tìm trong PDF → True
+    - Nếu câu hỏi yêu cầu dữ liệu cụ thể từ database (giá, volume, số liệu) → False
+    
+    Returns:
+        True nếu câu hỏi liên quan đến PDF documents và nên dùng RAG
+        False nếu câu hỏi cần truy vấn SQL database
     """
-    q_lower = question.lower().strip()
+    if not question or not question.strip():
+        return False
     
-    # Keywords cho general knowledge questions
-    general_patterns = [
-        r"\bwhat is\b",
-        r"\bwhat are\b", 
-        r"\bwhat does\b",
-        r"\bhow does\b",
-        r"\bhow do\b",
-        r"\bexplain\b",
-        r"\bdefine\b",
-        r"\bdefinition\b",
-        r"\bmeaning of\b",
-        r"\btell me about\b",
-        r"\bwhy does\b",
-        r"\bwhy do\b",
-        r"\bwhy is\b",
-        r"\blà gì\b",
-        r"\bcó nghĩa là gì\b",
-        r"\bgiải thích\b",
-        r"\btại sao\b",
-        r"\bnhư thế nào\b",
-        r"\bhow to\b",
-        r"\bwhat factors\b",
-        r"\bwhen does\b",
-        r"\bwho is\b",
-        r"\bwho are\b",
-        r"\bwhich companies\b",
-        r"\bnhững công ty nào\b",
-        r"\bcông ty nào\b",
-    ]
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        # Fallback: nếu không có API key, trả về False để dùng SQL pipeline
+        print("Warning: No Gemini API key found. Skipping RAG detection.")
+        return False
     
-    # Keywords cho data questions (cần SQL)
-    data_patterns = [
-        r"\bprice\b.*\b(on|in|at|during)\b",
-        r"\bclosing price\b.*\b(on|of|in)\b",
-        r"\bopening price\b.*\b(on|of|in)\b",
-        r"\bvolume\b.*\b(on|in|of)\b",
-        r"\bhighest\b.*\b(price|close|open)\b",
-        r"\blowest\b.*\b(price|close|open)\b",
-        r"\baverage\b.*\b(price|close|volume)\b",
-        r"\bcompare\b.*\b(and|vs|versus)\b",
-        r"\btrend\b.*\b(in|during|from)\b",
-        r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d",
-        r"\b20[0-9]{2}-\d{2}-\d{2}\b",  # Date patterns like 2024-01-15
-        r"\b20[0-9]{2}\b.*\b(price|close|open|volume|high|low)\b",
-        r"\bq[1-4]\s+20[0-9]{2}\b",  # Quarter patterns
-        r"\bgiá\b.*\b(ngày|tháng|năm)\b",
-        r"\bplot\b",
-        r"\bchart\b",
-        r"\bbiểu đồ\b",
-        r"\bvẽ\b",
-        r"\bgraph\b",
-    ]
-    
-    # Check for general patterns
-    is_general = any(re.search(p, q_lower) for p in general_patterns)
-    
-    # Check for data patterns  
-    is_data = any(re.search(p, q_lower) for p in data_patterns)
-    
-    # General question nếu match general patterns VÀ KHÔNG match data patterns
-    return is_general and not is_data
+    try:
+        google_genai.configure(api_key=api_key)
+        
+        # Prompt để LLM phân tích câu hỏi
+        prompt = f"""Bạn là một chuyên gia phân tích câu hỏi cho hệ thống tài chính.
+
+Hệ thống có 2 nguồn thông tin:
+1. PDF Documents: Chứa kiến thức tổng quát về thị trường chứng khoán, DJIA, khái niệm, giải thích, định nghĩa
+2. SQL Database: Chứa dữ liệu cụ thể về giá cổ phiếu, volume, ngày tháng cụ thể của các công ty
+
+CÂU HỎI: {question}
+
+NHIỆM VỤ: Xác định xem câu hỏi này có liên quan đến kiến thức trong PDF documents không.
+
+QUY TẮC:
+- Trả về TRUE nếu câu hỏi hỏi về: khái niệm, định nghĩa, giải thích, kiến thức tổng quát, lý thuyết, cách thức hoạt động
+  Ví dụ: "What is DJIA?", "Giải thích về thị trường chứng khoán", "How does stock market work?"
+  
+- Trả về FALSE nếu câu hỏi yêu cầu: dữ liệu cụ thể, số liệu, giá cả, volume, so sánh số liệu, biểu đồ dữ liệu
+  Ví dụ: "What was the price of Apple on 2024-01-15?", "Plot the volume", "Compare prices of AAPL and MSFT"
+
+CHỈ TRẢ LỜI: TRUE hoặc FALSE (không có dấu chấm, không có giải thích thêm)"""
+
+        model = google_genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        
+        result = (response.text or "").strip().upper()
+        
+        # Parse kết quả
+        if "TRUE" in result:
+            return True
+        elif "FALSE" in result:
+            return False
+        else:
+            # Nếu LLM trả về format không chuẩn, mặc định là False
+            print(f"Warning: LLM returned unexpected format: {result}. Defaulting to False.")
+            return False
+            
+    except Exception as e:
+        print(f"Error in detect_general_question with LLM: {e}")
+        # Fallback: nếu có lỗi, trả về False để dùng SQL pipeline
+        return False
 
 
 def answer_with_context(question: str, context_docs: List[Dict[str, Any]]) -> str:
@@ -439,59 +432,56 @@ YÊU CẦU:
 
 def rag_retrieve(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    LangGraph Node: RAG Retriever - Xử lý câu hỏi general knowledge.
+    LangGraph Node: RAG Retriever - Tìm kiếm thông tin từ PDF documents.
     
-    Node này kiểm tra xem câu hỏi có phải là general question không:
-    - Nếu CÓ: Retrieve context từ PDF documents và trả lời, skip SQL pipeline
-    - Nếu KHÔNG: Tiếp tục SQL pipeline bình thường
+    Node này được gọi khi câu hỏi KHÔNG liên quan SQL (đã được phân loại bởi question_classifier).
+    - Tìm kiếm thông tin liên quan từ PDF documents
+    - Nếu có thông tin phù hợp: Trả về context để gửi cho answer_summarizer
+    - Nếu không có: Trả về flag không có thông tin trong PDF
     
     Args:
         state: Dictionary chứa workflow state, cần có key "question"
         
     Returns:
         State mới với các key:
-        - is_general_question: Boolean - có phải general question không
-        - rag_context: List documents retrieved (nếu là general question)
-        - answer: String - câu trả lời (nếu là general question)
-        - skip_sql: Boolean - có skip SQL pipeline không
+        - has_rag_context: Boolean - Có thông tin liên quan trong PDF không
+        - rag_context: List documents retrieved (nếu có)
     """
     question = state.get("question", "")
     
-    # Detect loại câu hỏi
-    is_general = detect_general_question(question)
+    # Đảm bảo documents đã được index
+    index_documents(force_reindex=False)
     
-    if is_general:
-        # Đảm bảo documents đã được index
-        index_documents(force_reindex=False)
-        
-        # Retrieve context từ ChromaDB
-        context_docs = retrieve_from_db(question, top_k=5)
-        
-        if not context_docs:
-            # Fallback: Nếu không có documents, dùng LLM trả lời trực tiếp
-            answer = answer_with_context(question, [])
-        else:
-            # Generate answer với context
-            answer = answer_with_context(question, context_docs)
-        
+    # Retrieve context từ ChromaDB
+    context_docs = retrieve_from_db(question, top_k=5)
+    
+    if not context_docs:
+        # Không có documents trong knowledge base
         return {
             **state,
-            "is_general_question": True,
-            "rag_context": context_docs,
-            "answer": answer,
-            "skip_sql": True,
-            "df": None,
-            "sql": None,
-            "used_sample": False,
-        }
-    else:
-        # Không phải general question, tiếp tục SQL pipeline
-        return {
-            **state,
-            "is_general_question": False,
+            "has_rag_context": False,
             "rag_context": [],
-            "skip_sql": False,
         }
+    
+    # Kiểm tra relevance score của documents
+    # Nếu tất cả documents có relevance score thấp (< 0.3), coi như không phù hợp
+    min_relevance = 0.3
+    relevant_docs = [doc for doc in context_docs if doc.get("relevance_score", 0) >= min_relevance]
+    
+    if not relevant_docs:
+        # Documents không phù hợp với câu hỏi
+        return {
+            **state,
+            "has_rag_context": False,
+            "rag_context": [],
+        }
+    
+    # Có documents phù hợp, trả về context để answer_summarizer xử lý
+    return {
+        **state,
+        "has_rag_context": True,
+        "rag_context": relevant_docs,
+    }
 
 
 # ========== UTILITY FUNCTIONS ==========

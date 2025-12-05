@@ -4,60 +4,55 @@ DJIA Multi-Agent Workflow - LangGraph Implementation.
 Module này định nghĩa workflow chính của hệ thống multi-agent,
 sử dụng LangGraph để điều phối các nodes chuyên biệt.
 
-WORKFLOW (với RAG):
+WORKFLOW (với Classifier và RAG):
 ┌─────────────────────────────────────────────────────────────┐
 │                     START: User Question                     │
 └──────────────────────┬──────────────────────────────────────┘
                        ↓
            ┌───────────────────────┐
-           │   1. Query Planner    │  Phân tích độ phức tạp
-           │   (plan_query)        │  Phát hiện yêu cầu vẽ biểu đồ
-           └───────────┬───────────┘
-                       ↓
-           ┌───────────────────────┐
-           │   2. RAG Retriever    │  Kiểm tra general question
-           │   (rag_retrieve)      │  Trả lời từ knowledge base
+           │ 0. Question Classifier │  Phân loại SQL/Other
+           │(question_classifier)   │
            └───────────┬───────────┘
                        │
-          General?    │
+            SQL?      │
               ↙        ↘
-         Có ↙            ↘ Không (cần SQL)
+         SQL ↙            ↘ Other
            ↙                ↘
-    ┌─────────┐     ┌──────────────────────────┐
-    │  END    │     │  3. SQL Template Matcher │
-    │(answer) │     │  (match_sql_template)    │
-    └─────────┘     └──────────┬──────┬────────┘
-                               │      │
-                       Có SQL? │      │ Không có
-                               │      ↓
-                               │  ┌─────────────────────┐
-                               │  │  4. SQL Generator   │
-                               │  │  (generate_sql)     │
-                               │  └─────────┬───────────┘
-                               ↓            ↓
-                       ┌────────────────────────────┐
-                       │   5. SQL Executor          │
-                       │   (execute_sql)            │
-                       └────────────┬───────────────┘
-                                    ↓
-                          Cần biểu đồ?
-                               ↙    ↘
-                         Có  ↙        ↘  Không
-                            ↙            ↘
-                ┌─────────────────┐    ┌──────────────────────┐
-                │  6. Chart Gen   │    │  7. Answer Summary   │
-                │  (generate)     │ →  │  (summarize_answer)  │
-                └─────────────────┘    └──────────┬───────────┘
-                                                   ↓
-                                       ┌───────────────────────┐
-                                       │   END: Return Result  │
-                                       └───────────────────────┘
+    ┌───────────┐     ┌──────────────────┐
+    │ 1. Planner│     │  2. RAG Retriever│
+    │(plan_query)│     │ (rag_retrieve)   │
+    └─────┬─────┘     └────────┬─────────┘
+          ↓                    │
+    ┌──────────────┐    RAG có thể trả lời?
+    │ 3. SQL Match │           ↙    ↘
+    └─────┬────────┘      Có ↙        ↘ Không
+          ↓                ↙            ↘
+    ┌──────────────┐   ┌──────┐    ┌──────────────────┐
+    │ 4. SQL Gen   │   │ END  │    │ 7. Answer Summary │
+    └─────┬────────┘   │(PDF) │    │ (LLM General)    │
+          ↓            └──────┘    └────────┬─────────┘
+    ┌──────────────┐                        ↓
+    │ 5. SQL Exec  │                ┌───────────────┐
+    └─────┬────────┘                │  END: Answer  │
+          ↓                         └───────────────┘
+    Cần biểu đồ?
+         ↙    ↘
+    Có ↙        ↘ Không
+       ↙            ↘
+┌──────────┐    ┌──────────────────┐
+│ 6. Chart │ →  │ 7. Answer Summary│
+└──────────┘    └────────┬──────────┘
+                        ↓
+                ┌───────────────┐
+                │  END: Answer  │
+                └───────────────┘
 """
 
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 
 # Import các nodes từ nodes/
+from nodes.question_classifier import classify_question
 from nodes.planner import plan_query
 from nodes.rag_retriever import rag_retrieve
 from nodes.sql_template_matcher import match_sql_template
@@ -71,14 +66,15 @@ def build_djia_graph():
     """
     Xây dựng LangGraph workflow với các nodes và edges.
 
-    Workflow gồm 7 nodes chính:
-    1. plan_query: Phân tích câu hỏi, xác định độ phức tạp
-    2. rag_retrieve: Xử lý general questions từ knowledge base
+    Workflow gồm 8 nodes chính:
+    0. question_classifier: Phân loại câu hỏi (SQL-related hay Other)
+    1. plan_query: Phân tích câu hỏi SQL, xác định độ phức tạp
+    2. rag_retrieve: Xử lý câu hỏi Other từ knowledge base (PDF)
     3. match_sql_template: Tìm SQL mẫu từ 80+ templates
     4. generate_sql: Sinh SQL bằng Gemini AI (nếu không có mẫu)
     5. execute_sql: Thực thi SQL trên PostgreSQL database
     6. generate_chart: Vẽ biểu đồ (nếu cần)
-    7. summarize_answer: Tạo câu trả lời tự nhiên
+    7. summarize_answer: Tạo câu trả lời tự nhiên (SQL hoặc LLM general)
 
     Returns:
         Compiled LangGraph workflow ready để invoke
@@ -87,6 +83,7 @@ def build_djia_graph():
     graph = StateGraph(dict)
 
     # ========== THÊM NODES VÀO GRAPH ==========
+    graph.add_node("question_classifier", classify_question)
     graph.add_node("plan_query", plan_query)
     graph.add_node("rag_retrieve", rag_retrieve)
     graph.add_node("match_sql_template", match_sql_template)
@@ -97,30 +94,34 @@ def build_djia_graph():
 
     # ========== ĐỊNH NGHĨA WORKFLOW FLOW ==========
 
-    # Start: Bắt đầu với planning
-    graph.set_entry_point("plan_query")
+    # Start: Bắt đầu với classifier
+    graph.set_entry_point("question_classifier")
 
-    # Step 1→2: Sau planning → RAG check
-    graph.add_edge("plan_query", "rag_retrieve")
-
-    # Step 2→3/END: Conditional - General question hay Data question?
-    def route_after_rag(state: Dict[str, Any]) -> str:
+    # Step 0→1/2: Conditional - SQL-related hay Other?
+    def route_after_classify(state: Dict[str, Any]) -> str:
         """
-        Quyết định tiếp tục SQL pipeline hay kết thúc.
+        Quyết định routing sau khi phân loại.
 
         Returns:
-            "end" nếu là general question (đã có answer từ RAG)
-            "match_sql_template" nếu cần truy vấn SQL
+            "plan_query" nếu là SQL-related (chuyển sang SQL pipeline)
+            "rag_retrieve" nếu là Other (chuyển sang RAG)
         """
-        if state.get("skip_sql", False):
-            return "end"
-        return "match_sql_template"
+        if state.get("is_sql_related", True):
+            return "plan_query"
+        return "rag_retrieve"
 
     graph.add_conditional_edges(
-        "rag_retrieve",
-        route_after_rag,
-        {"end": END, "match_sql_template": "match_sql_template"},
+        "question_classifier",
+        route_after_classify,
+        {"plan_query": "plan_query", "rag_retrieve": "rag_retrieve"},
     )
+
+    # Step 1→3: SQL pipeline - Sau planning → SQL template matching
+    graph.add_edge("plan_query", "match_sql_template")
+
+    # Step 2→7: Sau RAG → luôn chuyển sang answer_summarizer
+    # (answer_summarizer sẽ quyết định dùng RAG context hay LLM general)
+    graph.add_edge("rag_retrieve", "summarize_answer")
 
     # Step 3→4/5: Conditional - Có SQL mẫu hay không?
     def need_llm(state: Dict[str, Any]) -> str:
@@ -226,34 +227,42 @@ def run_djia_graph(question: str, force_chart: bool = False) -> Dict[str, Any]:
 
     # ========== TRACK WORKFLOW STEPS ==========
 
-    # Lấy thông tin complexity để quyết định steps nào đã chạy
-    complexity = result.get("complexity", {})
+    # Step 0: Classification
+    is_sql_related = result.get("is_sql_related", True)
+    workflow_steps.append(
+        {
+            "step": 1,
+            "node": "question_classifier",
+            "description": "Phân loại câu hỏi",
+            "status": "completed",
+            "result": f"Loại: {'SQL-related' if is_sql_related else 'Other'}",
+        }
+    )
 
-    # Step 0: Planning (chỉ log nếu là multi-step query)
-    if complexity.get("is_multi_step"):
+    # Nếu không phải SQL-related, xử lý RAG path
+    if not is_sql_related:
+        has_rag_context = result.get("has_rag_context", False)
         workflow_steps.append(
             {
-                "step": 1,
-                "node": "plan_query",
-                "description": "Phân tích và lên kế hoạch cho câu hỏi phức tạp",
-                "status": "completed",
-                "result": f"Độ phức tạp: Multi-step, Cần biểu đồ: {complexity.get('needs_chart')}",
-            }
-        )
-
-    # Step: RAG Check
-    if result.get("is_general_question"):
-        workflow_steps.append(
-            {
-                "step": len(workflow_steps) + 1,
+                "step": 2,
                 "node": "rag_retrieve",
-                "description": "RAG - Trả lời câu hỏi kiến thức tổng quát",
+                "description": "RAG - Tìm kiếm trong PDF documents",
                 "status": "completed",
-                "result": f"Retrieved {len(result.get('rag_context', []))} documents từ knowledge base",
+                "result": f"{'Tìm thấy thông tin liên quan trong PDF' if has_rag_context else 'Không có thông tin trong PDF'}",
             }
         )
-
-        # Return early cho general questions
+        
+        # Answer summarizer đã xử lý (dùng RAG context hoặc LLM general)
+        workflow_steps.append(
+            {
+                "step": 3,
+                "node": "summarize_answer",
+                "description": f"Trả lời câu hỏi ({'dựa trên PDF' if has_rag_context else 'LLM general'})",
+                "status": "completed",
+                "result": "Đã tạo câu trả lời",
+            }
+        )
+        
         return {
             "success": True,
             "sql": None,
@@ -264,9 +273,24 @@ def run_djia_graph(question: str, force_chart: bool = False) -> Dict[str, Any]:
             "error": None,
             "workflow": workflow_steps,
             "chart": None,
-            "complexity": complexity,
-            "is_general_question": True,
+            "complexity": {},
+            "is_general_question": not is_sql_related,
         }
+
+    # SQL-related path: Lấy thông tin complexity
+    complexity = result.get("complexity", {})
+
+    # Step 1: Planning (chỉ log nếu là multi-step query)
+    if complexity.get("is_multi_step"):
+        workflow_steps.append(
+            {
+                "step": len(workflow_steps) + 1,
+                "node": "plan_query",
+                "description": "Phân tích và lên kế hoạch cho câu hỏi phức tạp",
+                "status": "completed",
+                "result": f"Độ phức tạp: Multi-step, Cần biểu đồ: {complexity.get('needs_chart')}",
+            }
+        )
 
     # Step 1: SQL Template Matching
     workflow_steps.append(
