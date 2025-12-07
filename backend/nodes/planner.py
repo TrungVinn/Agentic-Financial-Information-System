@@ -275,7 +275,7 @@ def create_execution_plan(
 
     try:
         # Gọi Gemini AI
-        model = google_genai.GenerativeModel("gemini-2.5-flash")
+        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
         resp = model.generate_content(prompt)
 
         # Parse JSON response

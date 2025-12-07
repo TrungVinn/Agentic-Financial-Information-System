@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 import re
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+from google import generativeai as google_genai
 from config import SQL_SAMPLES_FILE
 from nodes.utils import normalize_text, extract_ticker
 from nodes.chart_generator import build_chart_sql
@@ -11,7 +11,7 @@ from nodes.chart_generator import build_chart_sql
 load_dotenv()
 
 # Setup Gemini API key
-if os.getenv("GEMINI_API_KEY"):
+if os.getenv("GOOGLE_API_KEY") in (None, "") and os.getenv("GEMINI_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 
@@ -56,11 +56,15 @@ CÁCH TRẢ LỜI:
 Chỉ trả lời: FOUND: n hoặc NO_MATCH."""
 
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash", temperature=0.1, max_tokens=200
-        )
-        response = llm.invoke(prompt)
-        result = (response.content or "").strip()
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            print("Warning: No Gemini API key found. Skipping SQL template matching.")
+            return None
+        
+        google_genai.configure(api_key=api_key)
+        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        response = model.generate_content(prompt)
+        result = (response.text or "").strip()
         if result.startswith("FOUND:"):
             try:
                 idx_str = result.split(":")[1].strip()
