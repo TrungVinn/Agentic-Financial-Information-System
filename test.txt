@@ -168,5 +168,3 @@ Answer: The median closing price of Disney in 2024 was $100.14.
 Answer: The CAGR of Apple from Jan 1, 2023 to Dec 31, 2024 is 24.21%.
 
 -- ANALYTICAL, HARD
-
-llm gen sql, chưa tạo mẫu

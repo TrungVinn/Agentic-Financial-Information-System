@@ -100,7 +100,7 @@ def _summarize_with_llm(question: str, df: pd.DataFrame, sql: str = None) -> str
         "Trả lời:"
     )
 
-    model = google_genai.GenerativeModel("gemini-2.0-flash")
+    model = google_genai.GenerativeModel("gemini-2.5-flash")
     response = model.generate_content(prompt)
     answer = (response.text or "").strip()
     if not answer:
@@ -142,7 +142,7 @@ def _answer_general_question_with_llm(question: str) -> str:
     prompt = f"{system_prompt}\n\nCâu hỏi: {question}\n\nTrả lời:"
     
     try:
-        model = google_genai.GenerativeModel("gemini-2.0-flash")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         answer = (response.text or "").strip()
         if not answer:
@@ -208,7 +208,7 @@ YÊU CẦU:
     prompt = f"{system_prompt}\n\nCâu hỏi: {question}\n\nTrả lời:"
     
     try:
-        model = google_genai.GenerativeModel("gemini-2.0-flash")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         answer = (response.text or "").strip()
         return answer if answer else "Không thể tạo câu trả lời."
@@ -229,7 +229,7 @@ def summarize_answer(state: Dict[str, Any]) -> Dict[str, Any]:
     error = state.get("error")
     question = state.get("question", "")
     sql = state.get("sql")
-    
+
     # ========== TRƯỜNG HỢP 1: Câu hỏi không liên quan SQL (Other) ==========
     is_sql_related = state.get("is_sql_related", True)
     

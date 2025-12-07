@@ -57,7 +57,7 @@ Chỉ trả lời: FOUND: n hoặc NO_MATCH."""
 
     try:
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash", temperature=0.1, max_tokens=200
+            model="gemini-2.5-flash", temperature=0.1, max_tokens=200
         )
         response = llm.invoke(prompt)
         result = (response.content or "").strip()

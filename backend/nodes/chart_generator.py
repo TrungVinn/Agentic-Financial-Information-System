@@ -170,7 +170,7 @@ def build_chart_sql(
     )
 
     try:
-        model = google_genai.GenerativeModel("gemini-2.0-flash")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         resp = model.generate_content(prompt)
         sql = (resp.text or "").strip()
 
@@ -442,7 +442,7 @@ def build_chart_code(
     )
 
     try:
-        model = google_genai.GenerativeModel("gemini-2.0-flash")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         resp = model.generate_content(prompt)
         code = (resp.text or "").strip()
         if code.startswith("```"):
@@ -832,8 +832,9 @@ def generate_chart(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # Nếu đã có df từ SQL execution, dùng luôn (không fetch lại)
     # Với all companies hoặc sector query, SQL đã trả về đúng dữ liệu
+    # Giữ nguyên df kể cả khi không có cột date (ví dụ correlation matrix, aggregate)
     if not is_all_companies and not is_sector_query:
-        if df is None or df.empty or "date" not in df.columns:
+        if df is None or df.empty:
             df = fetch_chart_data(question, ticker, chart_type)
 
     if df is None or df.empty:

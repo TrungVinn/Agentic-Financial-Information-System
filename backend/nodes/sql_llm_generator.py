@@ -143,7 +143,7 @@ def generate_sql_with_llm(
     else:
         prompt_text = f"{system}{hint_text}\n\nCâu hỏi: {question}"
 
-    model = google_genai.GenerativeModel("gemini-2.0-flash")
+    model = google_genai.GenerativeModel("gemini-2.5-flash")
     resp = model.generate_content(prompt_text)
     response_text = (resp.text or "").strip()
 
