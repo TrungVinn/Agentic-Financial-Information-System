@@ -246,6 +246,34 @@ def build_params(
         if ":window_days" in sql_text:
             params["window_days"] = 180  # ~6 tháng
 
+    # ========== FALLBACK CHO :company ==========
+    # Nếu SQL có parameter :company nhưng chưa được set,
+    # thử trích xuất tên công ty từ câu hỏi
+    if "company" not in params:
+        sql_text = (state or {}).get("sql", "")
+        if ":company" in sql_text or "%(company)s" in sql_text:
+            # Danh sách tên công ty DJIA phổ biến
+            company_names = {
+                "apple": "Apple", "microsoft": "Microsoft", "amazon": "Amazon",
+                "google": "Google", "alphabet": "Alphabet", "meta": "Meta",
+                "nvidia": "NVIDIA", "tesla": "Tesla", "boeing": "Boeing",
+                "disney": "Disney", "coca-cola": "Coca-Cola", "coca cola": "Coca-Cola",
+                "mcdonald": "McDonald", "nike": "Nike", "walmart": "Walmart",
+                "visa": "Visa", "jpmorgan": "JPMorgan", "intel": "Intel",
+                "ibm": "IBM", "cisco": "Cisco", "verizon": "Verizon",
+                "chevron": "Chevron", "caterpillar": "Caterpillar",
+                "goldman sachs": "Goldman Sachs", "unitedhealth": "UnitedHealth",
+                "home depot": "Home Depot", "amgen": "Amgen", "honeywell": "Honeywell",
+                "3m": "3M", "travelers": "Travelers", "dow": "Dow",
+                "salesforce": "Salesforce", "walgreens": "Walgreens",
+                "american express": "American Express", "merck": "Merck",
+            }
+            q_lower = question.lower()
+            for name_key, name_value in company_names.items():
+                if name_key in q_lower:
+                    params["company"] = name_value
+                    break
+
     return params
 
 

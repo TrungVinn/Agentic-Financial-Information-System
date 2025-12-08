@@ -73,7 +73,7 @@ QUY TẮC:
 
 CHỈ TRẢ LỜI: SQL hoặc OTHER (không có dấu chấm, không có giải thích thêm)"""
 
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         
         result = (response.text or "").strip().upper()

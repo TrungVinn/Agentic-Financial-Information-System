@@ -170,7 +170,7 @@ def build_chart_sql(
     )
 
     try:
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         resp = model.generate_content(prompt)
         sql = (resp.text or "").strip()
 
@@ -442,7 +442,7 @@ def build_chart_code(
     )
 
     try:
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         resp = model.generate_content(prompt)
         code = (resp.text or "").strip()
         if code.startswith("```"):

@@ -112,17 +112,18 @@ def generate_sql_with_llm(
         "- ⚠️ QUAN TRỌNG: KHÔNG BAO GIỜ dùng strftime() - đây là SQLite syntax, PostgreSQL KHÔNG hỗ trợ!\n"
         "- ⚠️ QUAN TRỌNG: KHÔNG dùng LIKE cho date, dùng TO_CHAR() hoặc EXTRACT().\n"
         "- JOIN: prices.ticker = companies.symbol\n"
-        "- ⚠️ QUAN TRỌNG: Khi truy vấn thông tin từ bảng companies (sector, country, industry, description, website, market_cap, pe_ratio, dividend_yield, week_52_high, week_52_low, etc.),\n"
-        "  NẾU đã biết ticker (có parameter :ticker), PHẢI LUÔN dùng WHERE companies.symbol = :ticker (KHÔNG BAO GIỜ dùng WHERE companies.name = :company hoặc WHERE companies.name ILIKE).\n"
-        "  Ví dụ đúng: SELECT dividend_yield FROM companies WHERE symbol = :ticker;\n"
-        "  Ví dụ đúng: SELECT week_52_high FROM companies WHERE symbol = :ticker;\n"
-        "  Ví dụ sai: SELECT dividend_yield FROM companies WHERE name ILIKE '%' || :company || '%';\n"
-        "  Ví dụ sai: SELECT week_52_high FROM companies WHERE name = 'Apple';\n"
-        "- ⚠️ QUAN TRỌNG: Khi tìm ticker symbol theo tên công ty (ví dụ: 'What is the ticker symbol for Apple?'),\n"
-        "  PHẢI dùng WHERE companies.name ILIKE '%' || :company || '%' (KHÔNG dùng WHERE companies.name = :company hoặc WHERE companies.name = 'Apple').\n"
-        "  Lý do: Tên công ty trong database có thể là 'Apple Inc.' chứ không phải chỉ 'Apple'.\n"
+        "- ⚠️ CỰC KỲ QUAN TRỌNG - LUÔN DÙNG :ticker:\n"
+        "  Khi câu hỏi đề cập đến tên công ty (Apple, Microsoft, Boeing, etc.), hệ thống ĐÃ TỰ ĐỘNG chuyển thành mã ticker.\n"
+        "  VÌ VẬY, LUÔN LUÔN dùng WHERE ticker = :ticker hoặc WHERE prices.ticker = :ticker.\n"
+        "  KHÔNG BAO GIỜ dùng WHERE companies.name ILIKE '%' || :company || '%' cho các truy vấn về giá, volume, drawdown, etc.\n"
+        "  Ví dụ đúng cho 'max drawdown of Microsoft in 2024':\n"
+        "    SELECT ... FROM prices WHERE ticker = :ticker AND EXTRACT(YEAR FROM date) = :year;\n"
+        "  Ví dụ SAI (KHÔNG ĐƯỢC DÙNG):\n"
+        "    WITH CompanyTicker AS (SELECT symbol FROM companies WHERE name ILIKE '%' || :company || '%') ...\n"
+        "- ⚠️ CHỈ DÙNG :company khi câu hỏi hỏi 'ticker symbol của X là gì?' (What is the ticker symbol for X?).\n"
         "  Ví dụ đúng: SELECT symbol FROM companies WHERE name ILIKE '%' || :company || '%';\n"
-        "  Ví dụ sai: SELECT symbol FROM companies WHERE name = 'Apple';\n"
+        "- ⚠️ QUAN TRỌNG: Khi truy vấn thông tin từ bảng companies (sector, country, industry, etc.),\n"
+        "  PHẢI LUÔN dùng WHERE companies.symbol = :ticker.\n"
         "- Có thể dùng CTE, window functions, subqueries.\n"
         "- PostgreSQL có STDDEV_POP() và STDDEV_SAMP() cho độ lệch chuẩn.\n"
         "- Parameter binding: dùng :param (sẽ được convert sang %(param)s tự động).\n\n"
@@ -143,7 +144,7 @@ def generate_sql_with_llm(
     else:
         prompt_text = f"{system}{hint_text}\n\nCâu hỏi: {question}"
 
-    model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+    model = google_genai.GenerativeModel("gemini-2.5-flash")
     resp = model.generate_content(prompt_text)
     response_text = (resp.text or "").strip()
 
