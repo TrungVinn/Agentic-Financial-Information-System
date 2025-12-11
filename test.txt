@@ -1,3 +1,5 @@
+-- TEST SQL TEMPLATE
+
 -- FACTUAL, EASY
 1. Question: What was the opening price of Boeing on August 1, 2023?
 Answer: $237.55
@@ -167,4 +169,86 @@ Answer: The median closing price of Disney in 2024 was $100.14.
 5. Question: What was the compound annual growth rate (CAGR) of Apple from Jan 1, 2023 to Dec 31, 2024?
 Answer: The CAGR of Apple from Jan 1, 2023 to Dec 31, 2024 is 24.21%.
 
--- ANALYTICAL, HARD
+-- TEST SQL LLM GENERATE
+
+1. What was the average daily price range (high - low) of Microsoft stock in 2024? 
+Answer: The average daily price range (high - low) of Microsoft stock in 2024 was 6.90 USD.
+
+2. Which are the top 5 companies by market capitalization that also have a P/E ratio below 30?
+Answer: The top 5 companies by market capitalization with a P/E ratio below 30 are:
+1.  **JP Morgan Chase & Co.** ($679.88 billion)
+2.  **UnitedHealth Group Incorporated** ($386.16 billion)
+3.  **Procter & Gamble Company** ($377.52 billion)
+4.  **Johnson & Johnson** ($372.77 billion)
+5.  **Home Depot, Inc.** ($357.46 billion)
+
+3. What was the maximum drawdown of Goldman Sachs stock from January 1, 2024 to December 31, 2024?
+Answer: The maximum drawdown of Goldman Sachs stock from January 1, 2024, to December 31, 2024, was a decrease of 9.82%.
+
+4. Which company had the most consecutive days of price increase in 2024, and how many days was it?
+Answer: Nike, Inc. had the most consecutive days of price increase in 2024, with 12 days.
+
+5. What was the total dollar value traded (volume × closing price) for Apple in the first quarter of 2024? 
+Answer: The total dollar value traded for Apple in the first quarter of 2024 was $680,740,301,482.83.
+
+6. Which company had the highest average daily trading value (average of volume × closing price) in 2024?
+Answer: Apple Inc. had the highest average daily trading value in 2024, at 11,653,176,462.71 USD.
+
+7. What was the correlation coefficient between the daily closing prices of Apple and Microsoft in 2024? 
+Answer: The correlation coefficient between the daily closing prices of Apple and Microsoft in 2024 is 0.55.
+
+8. How many trading days did Apple's closing price exceed its opening price in 2024?
+Answer: There were 137 trading days in 2024 where Apple's closing price exceeded its opening price.
+
+9. What was the average daily percentage change in closing price for Microsoft in 2024?
+Answer: The average daily percentage change in closing price for Microsoft in 2024 is 0.06%.
+
+10. which company had the highest price volatility (standard deviation of daily closing prices) in 2024?
+Answer: Intel Corporation had the highest price volatility in 2024, with a standard deviation of daily closing prices of 0.03.
+
+11.What was the total number of trading days for Boeing stock in 2024?
+Answer: The total number of trading days for Boeing stock in 2024 was 252.
+
+12. What was the average intraday price range (high minus low) of Johnson & Johnson during October 2024?
+Answer: The average intraday price range (high minus low) for Johnson & Johnson during October 2024 was 2.01.
+
+13. What was the volatility (standard deviation of daily returns) of Boeing stock in 2024 
+Answer: The volatility of Boeing stock in 2024 was 0.0215 (or 2.15%). 
+
+14. Which company had the most trading days where the closing price was at least 5% higher than the opening price in 2024? 
+Answer: Apple Inc. had the most trading days where the closing price was at least 5% higher than the opening price in 2024, with 2 days.
+
+15. How many companies in the Healthcare sector had a P/E ratio between 15 and 25 as of December 31, 2024? 
+Answer: As of December 31, 2024, there are 3 companies in the Healthcare sector with a P/E ratio between 15 and 25.
+
+-- TEST CHART
+
+1. Plot the time series of Microsoft (MSFT) stock closing price from June 1, 2024 to September 30, 2024
+
+2. Plot the histogram of daily returns of Boeing (BA) during 2024
+
+3. plot a boxplot of monthly closing prices of Salesforce(CRM) for each month of 2023
+
+4. Create a scatter plot of market capitalization versus P/E ratio for all DJIA companies as of April 26,
+2025
+
+5. Create a bar chart of the top 10 companies by market capitalization as of April 26, 2025
+
+6. Create a pie chart showing the distribution of DJIA companies by sector
+
+7. Plot a heatmap of the correlation matrix of daily returns in 2024 for AAPL, MSFT, JPM, BA, and
+WMT.
+
+8. Plot Microsoft (MSFT) daily closing price and its 30-day rolling average during 2024.
+
+-- TEST RAG 
+
+1. What is the Dow Jones Industrial Average (DJIA)?
+
+2. What does P/E ratio mean and how is it calculated?
+
+3. What sectors are represented in the Dow Jones Industrial Average?
+
+4. What is dividend yield and how is it different from dividend per share?
+
+5. What were the key financial highlights or major events for Dow Inc. in 2024 according to the annual report?

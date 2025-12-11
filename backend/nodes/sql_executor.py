@@ -82,7 +82,7 @@ def build_params(
         r"symbol\s+for\s+([^?]+)",
         r"ticker\s+of\s+([^?]+)",
         r"symbol\s+of\s+([^?]+)",
-        r"ticket\s+of\s+([^?]+)",  # "ticket" (typo của "ticker")
+        r"ticket\s+of\s+([^?]+)",
     ]
     for pattern in ticker_symbol_patterns:
         match = re.search(pattern, question, re.IGNORECASE)

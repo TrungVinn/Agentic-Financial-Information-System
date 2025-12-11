@@ -24,7 +24,7 @@ def create_database():
     # Kết nối PostgreSQL database
     try:
         conn = psycopg2.connect(**POSTGRES_CONFIG)
-    cursor = conn.cursor()
+        cursor = conn.cursor()
     except psycopg2.OperationalError as e:
         print(f"Lỗi kết nối PostgreSQL: {e}")
         print(f"Vui lòng kiểm tra config: {POSTGRES_CONFIG}")
@@ -154,7 +154,7 @@ def create_database():
         if engine is not None:
             engine.dispose()
         if conn:
-        conn.close()
+            conn.close()
 
 if __name__ == "__main__":
     create_database()

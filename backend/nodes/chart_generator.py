@@ -152,6 +152,28 @@ def build_chart_sql(
         "  * Nếu cần aggregate (avg, sum, count): dùng GROUP BY ticker hoặc symbol\n"
         "- Không được tạo bảng mới hay sử dụng tên bảng khác.\n"
         "- Không dùng comment hoặc nhiều câu SQL.\n"
+        "- ⚠️ QUAN TRỌNG: Khi JOIN companies với prices và cần filter theo tên công ty:\n"
+        "  * NẾU đã có parameter :ticker trong câu hỏi, PHẢI LUÔN dùng trực tiếp WHERE prices.ticker = :ticker hoặc WHERE companies.symbol = :ticker\n"
+        "  * KHÔNG BAO GIỜ tạo CTE để tìm ticker từ tên công ty nếu đã có :ticker sẵn!\n"
+        "  * CHỈ tạo CTE tìm ticker nếu câu hỏi KHÔNG có ticker và chỉ có tên công ty\n"
+        "  * Nếu chỉ biết tên công ty (KHÔNG có :ticker): PHẢI dùng WHERE companies.name ILIKE '%' || :company || '%' (KHÔNG dùng WHERE companies.name = :company hoặc WHERE companies.name = 'literal')\n"
+        "  * Lý do: Tên công ty trong database là 'Apple Inc.' hoặc 'Apple, Inc.' chứ không phải chỉ 'Apple'\n"
+        "  * → name = 'Apple' sẽ KHÔNG BAO GIỜ match được, kết quả luôn trả về 0 dòng!\n"
+        "  * Ví dụ đúng (có :ticker): SELECT ... FROM prices WHERE ticker = :ticker AND EXTRACT(YEAR FROM date) = :year;\n"
+        "  * Ví dụ SAI (có :ticker nhưng vẫn tạo CTE): WITH company_ticker AS (SELECT symbol FROM companies WHERE name ILIKE '%' || :company || '%') SELECT ... FROM prices p JOIN company_ticker ct ON p.ticker = ct.symbol;\n"
+        "  * Ví dụ đúng (chỉ có tên công ty, không có :ticker): SELECT ... FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE c.name ILIKE '%' || :company || '%';\n"
+        "  * Ví dụ sai: SELECT ... FROM prices p JOIN companies c ON p.ticker = c.symbol WHERE c.name = 'Apple';\n"
+        "- ⚠️ QUAN TRỌNG: Tên parameter phải đúng:\n"
+        "  * Dùng :company (KHÔNG dùng :company_name)\n"
+        "  * Dùng :ticker (KHÔNG dùng :ticker_symbol hoặc :symbol)\n"
+        "  * Các parameter khác: :date, :year, :month, :quarter, :start_date, :end_date\n"
+        "- ⚠️ QUAN TRỌNG: Khi dùng LAG() để tính daily return hoặc price change:\n"
+        "  * KHÔNG BAO GIỜ dùng default value là chính giá trị hiện tại (ví dụ: LAG(close, 1, close))\n"
+        "  * Lý do: Ngày đầu tiên sẽ có LAG = close, dẫn đến close - close = 0 (SAI)\n"
+        "  * Giải pháp đúng: Dùng LAG(close, 1) (không có default) hoặc LAG(close, 1, NULL)\n"
+        "  * Sau đó filter ra các dòng NULL: WHERE LAG(close, 1) IS NOT NULL\n"
+        "  * Hoặc dùng CASE WHEN: CASE WHEN LAG(close, 1) IS NULL THEN NULL ELSE (close - LAG(close, 1)) / LAG(close, 1) * 100 END\n"
+        "  * Ví dụ đúng: SELECT date, (close - LAG(close, 1) OVER (ORDER BY date)) / LAG(close, 1) OVER (ORDER BY date) * 100 AS daily_return FROM prices WHERE ticker = :ticker AND LAG(close, 1) OVER (ORDER BY date) IS NOT NULL\n"
     )
 
     prompt = (
@@ -170,7 +192,7 @@ def build_chart_sql(
     )
 
     try:
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         resp = model.generate_content(prompt)
         sql = (resp.text or "").strip()
 
@@ -238,6 +260,79 @@ def build_chart_sql(
             sql,
             flags=re.IGNORECASE,
         )
+        
+        # Post-processing: Sửa WHERE companies.name = 'literal' thành WHERE companies.name ILIKE '%literal%'
+        # Áp dụng cho TẤT CẢ các trường hợp
+        # Lý do: Tên công ty trong database là "Apple Inc." chứ không phải "Apple", nên name = 'Apple' sẽ không match
+        
+        # Sửa WHERE companies.name = 'literal' thành WHERE companies.name ILIKE '%literal%'
+        sql = re.sub(
+            r"WHERE\s+companies\.name\s*=\s*'([^']+)'",
+            r"WHERE companies.name ILIKE '%' || '\1' || '%'",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        # Sửa WHERE c.name = 'literal' thành WHERE c.name ILIKE '%literal%' (khi có alias c)
+        sql = re.sub(
+            r"WHERE\s+([a-zA-Z_][a-zA-Z0-9_]*)\.name\s*=\s*'([^']+)'",
+            lambda m: f"WHERE {m.group(1)}.name ILIKE '%' || '{m.group(2)}' || '%'" if m.group(1).lower() in ['c', 'companies', 'company'] else m.group(0),
+            sql,
+            flags=re.IGNORECASE,
+        )
+        # Sửa WHERE name = 'literal' khi đang query từ companies (SELECT ... FROM companies WHERE name = ...)
+        if re.search(r"FROM\s+companies", sql, re.IGNORECASE) and not re.search(r"WHERE\s+companies\.name|WHERE\s+[a-zA-Z_]\.name", sql, re.IGNORECASE):
+            sql = re.sub(
+                r"WHERE\s+name\s*=\s*'([^']+)'",
+                r"WHERE name ILIKE '%' || '\1' || '%'",
+                sql,
+                flags=re.IGNORECASE,
+            )
+        
+        # Post-processing: Sửa :company_name thành :company (tên parameter sai)
+        sql = re.sub(
+            r":company_name\b",
+            r":company",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        
+        # Post-processing: Loại bỏ CTE tìm ticker nếu SQL đã có :ticker
+        # Pattern: WITH company_ticker AS (SELECT symbol FROM companies WHERE name ILIKE ...) ... JOIN company_ticker
+        # Nếu SQL có :ticker thì thay thế bằng WHERE ticker = :ticker trực tiếp
+        if re.search(r":ticker\b", sql, re.IGNORECASE):
+            # Tìm và loại bỏ CTE tìm ticker
+            # Pattern: WITH company_ticker AS (SELECT symbol FROM companies WHERE name ILIKE '%' || :company || '%'), ... JOIN company_ticker ct ON ...
+            cte_pattern = r"WITH\s+company_ticker\s+AS\s*\(\s*SELECT\s+symbol\s+FROM\s+companies\s+WHERE\s+name\s+ILIKE\s+'%%'\s*\|\|\s*:company\s*\|\|\s*'%%'\s*\)\s*,?\s*"
+            if re.search(cte_pattern, sql, re.IGNORECASE):
+                # Loại bỏ CTE
+                sql = re.sub(cte_pattern, "", sql, flags=re.IGNORECASE)
+                # Thay thế JOIN company_ticker ct ON p.ticker = ct.symbol thành WHERE p.ticker = :ticker
+                sql = re.sub(
+                    r"JOIN\s+company_ticker\s+[a-zA-Z_]*\s+ON\s+[a-zA-Z_]*\.ticker\s*=\s*[a-zA-Z_]*\.symbol",
+                    "",
+                    sql,
+                    flags=re.IGNORECASE,
+                )
+                # Thêm WHERE ticker = :ticker nếu chưa có WHERE
+                if not re.search(r"WHERE\s+.*ticker\s*=", sql, re.IGNORECASE):
+                    # Tìm vị trí sau FROM prices hoặc sau JOIN companies
+                    if re.search(r"FROM\s+prices", sql, re.IGNORECASE):
+                        sql = re.sub(
+                            r"(FROM\s+prices(?:\s+[a-zA-Z_]+)?)",
+                            r"\1 WHERE ticker = :ticker",
+                            sql,
+                            flags=re.IGNORECASE,
+                            count=1,
+                        )
+                    elif re.search(r"JOIN\s+companies", sql, re.IGNORECASE):
+                        # Nếu có JOIN companies, thêm WHERE sau JOIN
+                        sql = re.sub(
+                            r"(JOIN\s+companies(?:\s+[a-zA-Z_]+)?\s+ON\s+[^W]+)",
+                            r"\1 WHERE prices.ticker = :ticker",
+                            sql,
+                            flags=re.IGNORECASE,
+                            count=1,
+                        )
 
         return sql or None
     except Exception as e:
@@ -442,7 +537,7 @@ def build_chart_code(
     )
 
     try:
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         resp = model.generate_content(prompt)
         code = (resp.text or "").strip()
         if code.startswith("```"):

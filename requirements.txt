@@ -48,3 +48,6 @@ sentence-transformers>=2.2.0
 # PDF Processing
 pypdf>=3.0.0
 langchain-text-splitters>=0.2.0
+
+# crawl data
+yfinance>=0.2.0

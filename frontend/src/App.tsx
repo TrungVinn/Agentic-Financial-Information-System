@@ -778,7 +778,7 @@ function App() {
 
       <div className="app-root">
         <header className="app-header">
-          <h1 className="app-title">Agentic Financial System</h1>
+          <h1 className="app-title">Multi-Agent financial information system</h1>
           <div className="app-header-actions">
             {user ? (
               <>

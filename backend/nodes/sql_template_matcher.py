@@ -62,7 +62,7 @@ Chỉ trả lời: FOUND: n hoặc NO_MATCH."""
             return None
         
         google_genai.configure(api_key=api_key)
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         result = (response.text or "").strip()
         if result.startswith("FOUND:"):

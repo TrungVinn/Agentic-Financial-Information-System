@@ -354,7 +354,7 @@ QUY TẮC:
 
 CHỈ TRẢ LỜI: TRUE hoặc FALSE (không có dấu chấm, không có giải thích thêm)"""
 
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         
         result = (response.text or "").strip().upper()
@@ -422,7 +422,7 @@ YÊU CẦU:
     prompt = f"{system_prompt}\n\nCâu hỏi: {question}\n\nTrả lời:"
     
     try:
-        model = google_genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = google_genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         answer = (response.text or "").strip()
         return answer if answer else "Không thể tạo câu trả lời."
@@ -573,4 +573,4 @@ if __name__ == "__main__":
     print(f"   Sources: {info.get('sample_sources', [])}")
     
     # Test query
-    test_retrieval("What is DJIA?")
+    test_retrieval("What is AI agentic?")
