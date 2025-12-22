@@ -374,62 +374,6 @@ CHỈ TRẢ LỜI: TRUE hoặc FALSE (không có dấu chấm, không có giải
         # Fallback: nếu có lỗi, trả về False để dùng SQL pipeline
         return False
 
-
-def answer_with_context(question: str, context_docs: List[Dict[str, Any]]) -> str:
-    """
-    Trả lời câu hỏi sử dụng LLM với context từ RAG.
-    """
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        return "Không thể kết nối với LLM. Vui lòng kiểm tra API key."
-    
-    google_genai.configure(api_key=api_key)
-    
-    # Build context string với source attribution
-    if context_docs:
-        context_parts = []
-        for i, doc in enumerate(context_docs, 1):
-            source = doc.get("source", "unknown")
-            content = doc.get("content", "")
-            relevance = doc.get("relevance_score", 0)
-            context_parts.append(
-                f"[Document {i}] (Source: {source}, Relevance: {relevance:.2f})\n{content}"
-            )
-        context_text = "\n\n---\n\n".join(context_parts)
-    else:
-        context_text = "Không tìm thấy context phù hợp trong knowledge base."
-    
-    # Detect language
-    vietnamese_chars = re.findall(
-        r'[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]', 
-        question.lower()
-    )
-    is_vietnamese = len(vietnamese_chars) > 0
-    
-    system_prompt = f"""Bạn là trợ lý AI chuyên về thị trường chứng khoán và DJIA (Dow Jones Industrial Average).
-
-RETRIEVED CONTEXT FROM DOCUMENTS:
-{context_text}
-
-YÊU CẦU:
-- Trả lời dựa trên context được cung cấp từ documents
-- Nếu context không đủ thông tin, hãy nói rõ và cung cấp kiến thức chung
-- {'Trả lời bằng tiếng Việt' if is_vietnamese else 'Answer in English'}
-- Giữ câu trả lời ngắn gọn, rõ ràng, dễ hiểu
-- Cite source documents khi có thể (ví dụ: "Theo tài liệu X...")
-- Nếu câu hỏi về giá cụ thể của một cổ phiếu tại thời điểm nào đó, hãy hướng dẫn người dùng hỏi lại với format phù hợp"""
-
-    prompt = f"{system_prompt}\n\nCâu hỏi: {question}\n\nTrả lời:"
-    
-    try:
-        model = google_genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
-        answer = (response.text or "").strip()
-        return answer if answer else "Không thể tạo câu trả lời."
-    except Exception as e:
-        return f"Lỗi khi gọi LLM: {str(e)}"
-
-
 def rag_retrieve(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     LangGraph Node: RAG Retriever - Tìm kiếm thông tin từ PDF documents.

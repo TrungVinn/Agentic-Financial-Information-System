@@ -16,7 +16,7 @@ Answer: $79.20
 5. Question: What was the trading volume of Apple on January 3, 2024?
 Answer: 58,414,500 shares
 
-6. Question: what is dividens of apple of november 10, 2023
+6. Question: what is dividends of apple of november 10, 2023
 Answer: 0.24
 
 7. Question: what is stock split of apple of november 10, 2023
@@ -40,17 +40,17 @@ Answer: https://www.3m.com
 13. Question: market cap of Boeing?
 Answer: 134175367168
 
-14. Question: P/E ratio of Salesforce?
-Answer: 42.18
+14. Question: P/E ratio of Salesforce January 3, 2024?
+Answer: 34.80
 
-15. Question: Dividend yield of Coca-Cola?
-Answer: 284
+15. Question: Dividend yield of Coca-Cola January 21, 2024?
+Answer: 291
 
 16. Question: 52 week high of American Express Company?
-Answer: The 52 week high of American Express Company is 326.27.
+Answer: The 52 week high of American Express Company is 377.23.
 
 17. Question: 52 week low of Goldman Sachs Group?
-Answer: The 52 week low of Goldman Sachs Group is 425.19.
+Answer: The 52 week low of Goldman Sachs Group is 439.38.
 
 -- FACTUAL, MEDIUM
 
@@ -70,7 +70,7 @@ Answer: $0.68
 Answer: February 26, 2024 (3-for-1 split)
 
 6. Question: On which dates in 2024 did Microsoft pay dividends, and what were the amounts?
-Answer: Mar 14 ($0.75), May 15 ($0.75), Aug 8 ($0.75), Nov 21 ($0.83)
+Answer: Feb 14 (0.75), May 15 (0.75), Aug 15 (0.75), Nov 21 (0.83)
 
 -- COMPARATIVE, EASY
 
@@ -176,11 +176,11 @@ Answer: The average daily price range (high - low) of Microsoft stock in 2024 wa
 
 2. Which are the top 5 companies by market capitalization that also have a P/E ratio below 30?
 Answer: The top 5 companies by market capitalization with a P/E ratio below 30 are:
-1.  **JP Morgan Chase & Co.** ($679.88 billion)
-2.  **UnitedHealth Group Incorporated** ($386.16 billion)
-3.  **Procter & Gamble Company** ($377.52 billion)
-4.  **Johnson & Johnson** ($372.77 billion)
-5.  **Home Depot, Inc.** ($357.46 billion)
+1.  **JP Morgan Chase & Co.** with a market capitalization of $826.33 billion and a P/E ratio of 14.88.
+2.  **Johnson & Johnson** with a market capitalization of $481.76 billion and a P/E ratio of 19.34.
+3.  **Home Depot, Inc. (The)** with a market capitalization of $343.72 billion and a P/E ratio of 23.55.
+4.  **Procter & Gamble Company (The)** with a market capitalization of $326.80 billion and a P/E ratio of 20.38.
+5.  **Coca-Cola Company (The)** with a market capitalization of $301.64 billion and a P/E ratio of 23.21.
 
 3. What was the maximum drawdown of Goldman Sachs stock from January 1, 2024 to December 31, 2024?
 Answer: The maximum drawdown of Goldman Sachs stock from January 1, 2024, to December 31, 2024, was a decrease of 9.82%.

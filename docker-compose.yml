@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: afis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: djia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: afis-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override host để backend kết nối đúng service db trong docker
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: djia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: afis-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:
+
+

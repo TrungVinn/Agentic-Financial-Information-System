@@ -159,6 +159,80 @@ def build_params(
                         params["company"] = company_name
                         break
 
+    # ========== EXTRACT COMPANY NAME TỪ CÁC PATTERN PHỔ BIẾN ==========
+    # Ví dụ: "Goldman Sachs stock", "Microsoft stock", "stock of Apple", "Apple's stock"
+    # Mục đích: Khi LLM sinh SQL với :company nhưng chưa có company trong params
+    if "company" not in params:
+        q_normalized = normalize_text(question)
+        
+        # Pattern 1: "{company} stock" hoặc "{company}'s stock"
+        # Ví dụ: "Goldman Sachs stock", "Microsoft stock", "Apple's stock"
+        stock_patterns = [
+            r"([A-Z][A-Za-z\s&,\.'-]+?)\s+(?:stock|shares)",
+            r"([A-Z][A-Za-z\s&,\.'-]+?)'s\s+(?:stock|shares)",
+        ]
+        for pattern in stock_patterns:
+            match = re.search(pattern, question, re.IGNORECASE)
+            if match:
+                company_name = match.group(1).strip().rstrip("?.,!")
+                # Loại bỏ các từ không phải tên công ty (như "the", "of", "from", "to", "during")
+                # Chỉ lấy phần tên công ty (thường là 1-4 từ)
+                words = company_name.split()
+                # Loại bỏ các từ không phải tên công ty ở đầu
+                stop_words = {"the", "of", "from", "to", "during", "in", "on", "at", "for", "what", "was", "is", "are", "were"}
+                while words and words[0].lower() in stop_words:
+                    words = words[1:]
+                if words:
+                    # Lấy tối đa 4 từ đầu tiên (tên công ty thường không quá 4 từ)
+                    company_name = " ".join(words[:4])
+                    if company_name and len(company_name) > 2:  # Ít nhất 3 ký tự
+                        params["company"] = company_name
+                        break
+        
+        # Pattern 2: "stock of {company}" hoặc "shares of {company}"
+        # Ví dụ: "stock of Goldman Sachs", "shares of Microsoft"
+        if "company" not in params:
+            of_patterns = [
+                r"(?:stock|shares)\s+of\s+([A-Z][A-Za-z\s&,\.'-]+?)(?:\s+from|\s+to|\s+during|\s+in|\s+on|\s+from|\?|$)",
+            ]
+            for pattern in of_patterns:
+                match = re.search(pattern, question, re.IGNORECASE)
+                if match:
+                    company_name = match.group(1).strip().rstrip("?.,!")
+                    # Loại bỏ các từ không phải tên công ty ở cuối
+                    words = company_name.split()
+                    stop_words = {"the", "of", "from", "to", "during", "in", "on", "at", "for", "stock", "shares"}
+                    while words and words[-1].lower() in stop_words:
+                        words = words[:-1]
+                    if words:
+                        # Lấy tối đa 4 từ đầu tiên
+                        company_name = " ".join(words[:4])
+                        if company_name and len(company_name) > 2:
+                            params["company"] = company_name
+                            break
+        
+        # Pattern 3: "{company} from ... to ..." hoặc "{company} during ..."
+        # Ví dụ: "Goldman Sachs from January 1, 2024 to December 31, 2024"
+        if "company" not in params:
+            date_range_patterns = [
+                r"([A-Z][A-Za-z\s&,\.'-]+?)\s+(?:from|during|in|on)\s+",
+            ]
+            for pattern in date_range_patterns:
+                match = re.search(pattern, question, re.IGNORECASE)
+                if match:
+                    company_name = match.group(1).strip().rstrip("?.,!")
+                    # Loại bỏ các từ không phải tên công ty
+                    words = company_name.split()
+                    stop_words = {"the", "of", "what", "was", "is", "are", "were", "stock", "shares"}
+                    while words and words[0].lower() in stop_words:
+                        words = words[1:]
+                    if words:
+                        # Lấy tối đa 4 từ đầu tiên
+                        company_name = " ".join(words[:4])
+                        if company_name and len(company_name) > 2:
+                            params["company"] = company_name
+                            break
+
     # Thêm date/time parameters
     if "date" in parts:
         params["date"] = parts["date"]
@@ -366,6 +440,50 @@ def execute_sql(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # Build parameters từ câu hỏi
     params = build_params(question, ticker, state)
+
+    # ========== KIỂM TRA VÀ BỔ SUNG PARAMETER :company NẾU THIẾU ==========
+    # Nếu SQL có :company nhưng params không có company, thử extract lại từ câu hỏi
+    if re.search(r":company\b", sql, re.IGNORECASE) and "company" not in params:
+        # Thử extract lại với các pattern bổ sung
+        q_normalized = normalize_text(question)
+        
+        # Pattern: "{company} stock" hoặc "{company}'s stock"
+        stock_patterns = [
+            r"([A-Z][A-Za-z\s&,\.'-]+?)\s+(?:stock|shares)",
+            r"([A-Z][A-Za-z\s&,\.'-]+?)'s\s+(?:stock|shares)",
+        ]
+        for pattern in stock_patterns:
+            match = re.search(pattern, question, re.IGNORECASE)
+            if match:
+                company_name = match.group(1).strip().rstrip("?.,!")
+                words = company_name.split()
+                stop_words = {"the", "of", "from", "to", "during", "in", "on", "at", "for", "what", "was", "is", "are", "were"}
+                while words and words[0].lower() in stop_words:
+                    words = words[1:]
+                if words:
+                    company_name = " ".join(words[:4])
+                    if company_name and len(company_name) > 2:
+                        params["company"] = company_name
+                        break
+        
+        # Pattern: "stock of {company}" hoặc "shares of {company}"
+        if "company" not in params:
+            of_patterns = [
+                r"(?:stock|shares)\s+of\s+([A-Z][A-Za-z\s&,\.'-]+?)(?:\s+from|\s+to|\s+during|\s+in|\s+on|\s+from|\?|$)",
+            ]
+            for pattern in of_patterns:
+                match = re.search(pattern, question, re.IGNORECASE)
+                if match:
+                    company_name = match.group(1).strip().rstrip("?.,!")
+                    words = company_name.split()
+                    stop_words = {"the", "of", "from", "to", "during", "in", "on", "at", "for", "stock", "shares"}
+                    while words and words[-1].lower() in stop_words:
+                        words = words[:-1]
+                    if words:
+                        company_name = " ".join(words[:4])
+                        if company_name and len(company_name) > 2:
+                            params["company"] = company_name
+                            break
 
     try:
         # Thực thi SQL

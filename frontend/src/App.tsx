@@ -75,9 +75,9 @@ function App() {
   const [queryMode, setQueryMode] = useState<'natural' | 'sql' | 'chart'>('natural') // 'natural', 'sql', hoặc 'chart'
   const [showModeMenu, setShowModeMenu] = useState(false) // Hiển thị menu chọn mode
   const modeMenuRef = useRef<HTMLDivElement>(null)
-  const [answer, setAnswer] = useState<DjiaQueryResponse | null>(null)
+  const [, setAnswer] = useState<DjiaQueryResponse | null>(null)
   const [loadingQuery, setLoadingQuery] = useState(false)
-  const [queryError, setQueryError] = useState<string | null>(null)
+  const [, setQueryError] = useState<string | null>(null)
   const [history, setHistory] = useState<LocalSession[]>(() => {
     try {
       const raw = window.localStorage.getItem('afs:history')
@@ -109,7 +109,7 @@ function App() {
   const [activeLocalSessionId, setActiveLocalSessionId] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState<'chat' | 'auth'>('chat')
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [collapsedSections, setCollapsedSections] = useState<Record<string, { sql: boolean; table: boolean; chart: boolean }>>({})
@@ -373,21 +373,6 @@ function App() {
         messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
       }
     }, 200)
-  }
-
-  const formatDateTime = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleString('vi-VN', {
-        hour12: false,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    } catch {
-      return iso
-    }
   }
 
   const handleExecuteSql = async (e: FormEvent) => {
